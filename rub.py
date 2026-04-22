@@ -41,6 +41,10 @@ COMMON_RUBIKA_SAFE_EXTENSIONS = {
     ".pdf", ".txt", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
 }
 
+ARCHIVE_EXTENSIONS = {
+    ".zip", ".rar", ".7z", ".tar", ".gz", ".bz2", ".xz",
+}
+
 
 class CancelledTaskError(RuntimeError):
     pass
@@ -54,6 +58,21 @@ def remove_extension(name: str) -> str:
     if "." in name:
         name = name.rsplit(".", 1)[0]
     return name or "file"
+
+
+def unique_path(path: Path) -> Path:
+    if not path.exists():
+        return path
+
+    stem = path.stem or "file"
+    suffix = path.suffix
+    index = 1
+
+    while True:
+        candidate = path.with_name(f"{stem}_{index}{suffix}")
+        if not candidate.exists():
+            return candidate
+        index += 1
 
 
 def has_session(session_name: str) -> bool:
@@ -170,11 +189,36 @@ def should_use_extensionless_fallback(
     return not should_keep_extension(file_name)
 
 
+def should_force_extensionless_before_upload(media_type: str, file_name: str) -> bool:
+    suffix = Path(file_name).suffix.lower()
+    return media_type == "document" and suffix in ARCHIVE_EXTENSIONS
+
+
 def wait_with_cancel(task_id: str, seconds: int) -> None:
     for _ in range(seconds):
         if is_cancelled(task_id):
             raise CancelledTaskError("Cancelled by user.")
         time.sleep(1)
+
+
+def normalize_failed_progress(task: dict) -> None:
+    current_percent = int(task.get("upload_percent", 0) or 0)
+    task["upload_percent"] = min(current_percent, 99)
+
+
+def prepare_extensionless_upload_file(task: dict, source_path: Path, display_name: str) -> Path:
+    fallback_name = remove_extension(display_name)
+    target_path = unique_path(source_path.with_name(fallback_name))
+
+    if source_path != target_path:
+        source_path.rename(target_path)
+
+    task["path"] = str(target_path)
+    task["file_name"] = target_path.name
+    task["upload_percent"] = 0
+    task["attempt_text"] = None
+    save_processing(task)
+    return target_path
 
 
 def make_upload_progress_callback(task: dict, attempt: int):
@@ -254,6 +298,9 @@ def send_with_retry(
             last_error = e
             error_text = str(e).lower()
             effective_file_name = file_name or Path(file_path).name
+            task["attempt_text"] = f"{attempt} از {MAX_RETRIES}"
+            normalize_failed_progress(task)
+            save_processing(task)
 
             if should_use_extensionless_fallback(
                 media_type=media_type,
@@ -311,6 +358,16 @@ def process_task(task: dict) -> None:
             note="آپلود تا چند لحظه دیگر شروع می‌شود.",
         )
 
+        if should_force_extensionless_before_upload(media_type, send_name):
+            send_path = prepare_extensionless_upload_file(task, send_path, send_name)
+            send_name = Path(task["path"]).name
+            update_telegram_status(
+                task,
+                stage="آماده‌سازی فایل برای روبیکا",
+                upload_status="نام فایل برای روبیکا تنظیم شد",
+                note="فایل فشرده برای سازگاری بیشتر بدون پسوند ارسال می‌شود.",
+            )
+
         task["file_name"] = send_name
         save_processing(task)
 
@@ -323,17 +380,14 @@ def process_task(task: dict) -> None:
             if fallback_name == send_name:
                 raise RuntimeError(str(e)) from e
 
-            task["upload_percent"] = 0
-            task["file_name"] = fallback_name
-            task["attempt_text"] = None
-            save_processing(task)
+            send_path = prepare_extensionless_upload_file(task, send_path, fallback_name)
             update_telegram_status(
                 task,
                 stage="تلاش دوباره با نام سازگار",
                 upload_status="نام فایل برای روبیکا تنظیم شد",
                 note="ارسال با نام اصلی خطا داد و حالا بدون پسوند دوباره تلاش می‌شود.",
             )
-            send_name = fallback_name
+            send_name = Path(task["path"]).name
             send_with_retry(task, str(send_path), caption, file_name=send_name)
         except Exception:
             fallback_name = remove_extension(send_name)
@@ -347,17 +401,14 @@ def process_task(task: dict) -> None:
             if not needs_fallback:
                 raise
 
-            task["upload_percent"] = 0
-            task["file_name"] = fallback_name
-            task["attempt_text"] = None
-            save_processing(task)
+            send_path = prepare_extensionless_upload_file(task, send_path, fallback_name)
             update_telegram_status(
                 task,
                 stage="تلاش دوباره با نام سازگار",
                 upload_status="نام فایل برای روبیکا تنظیم شد",
                 note="این فایل ابتدا با نام اصلی ارسال شد و حالا بدون پسوند دوباره تلاش می‌شود.",
             )
-            send_name = fallback_name
+            send_name = Path(task["path"]).name
             send_with_retry(task, str(send_path), caption, file_name=send_name)
     except CancelledTaskError:
         cleanup_local_file(str(send_path))
@@ -414,6 +465,9 @@ def worker_loop():
             )
         except Exception as e:
             processing_task = load_processing() or task
+            processing_task["attempt_text"] = processing_task.get("attempt_text") or f"{MAX_RETRIES} از {MAX_RETRIES}"
+            normalize_failed_progress(processing_task)
+            save_processing(processing_task)
             append_failed(processing_task, str(e))
             update_telegram_status(
                 processing_task,
