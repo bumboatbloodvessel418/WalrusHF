@@ -1,8 +1,8 @@
 # Tele2Rub
 
-Automatically transfer files from a Telegram bot to your Rubika Saved Messages.
+Automatically transfer videos from a Telegram bot to your Rubika Saved Messages.
 
-This project receives media in Telegram, downloads it locally, places it in a queue, and then uploads it to Rubika through a separate worker process. The queue-based design helps keep transfers stable and avoids overlapping jobs.
+This project receives videos in Telegram, downloads them locally, places them in a queue, and then uploads them to Rubika through a separate worker process. The queue-based design helps keep transfers stable and avoids overlapping jobs.
 
 ## Inspiration
 
@@ -10,31 +10,30 @@ This project was inspired by [caffeinexz/Tele2Rub](https://github.com/caffeinexz
 
 ## Features
 
-- Accepts media from a Telegram bot in private chat
+- Accepts videos from a Telegram bot in private chat
 - Queues jobs before uploading to Rubika
-- Supports document, video, audio, voice, photo, animation, video note, and sticker inputs
+- Supports video inputs
 - Shows step-by-step status updates in Telegram
 - Displays download progress during Telegram download
 - Shows upload percentage progress, status updates, and retry attempts for temporary failures
 - Supports canceling a job with `/cancel`
-- Sends files to Rubika Saved Messages
-- Tries the original filename for every upload, including generic files
-- Falls back to removing unsupported extensions only when Rubika needs it
+- Sends videos to Rubika Saved Messages
+- Keeps video filenames and extensions during upload
 
 ## How It Works
 
 The application runs two processes:
 
-- `telebot.py`: receives files from Telegram, downloads them, and appends jobs to the queue
+- `telebot.py`: receives videos from Telegram, downloads them, and appends jobs to the queue
 - `rub.py`: reads queued jobs and uploads them to Rubika
 
 Flow overview:
 
-1. A user sends media to the Telegram bot.
-2. The bot downloads the file into the local `downloads/` directory.
+1. A user sends a video to the Telegram bot.
+2. The bot downloads the video into the local `downloads/` directory.
 3. A task is written to `queue/tasks.jsonl`.
 4. The Rubika worker picks up the task.
-5. The worker uploads the file to Rubika Saved Messages.
+5. The worker uploads the video to Rubika Saved Messages.
 6. The status message in Telegram is updated during the process.
 
 ## Status Updates
@@ -298,14 +297,7 @@ screen -ls
 
 The bot currently accepts these Telegram message types:
 
-- Document
 - Video
-- Audio
-- Voice
-- Photo
-- Animation
-- Video note
-- Sticker
 
 ## Project Structure
 
@@ -338,9 +330,7 @@ This makes the system easy to inspect and debug manually.
 
 ## Notes
 
-- Files are uploaded to Rubika as documents
-- The worker first keeps the original filename for all uploads
-- If Rubika rejects an uncommon extension, the worker retries without the extension
+- Videos are uploaded to Rubika with their original filenames
 - Upload progress is driven by Rubika chunk callbacks and shown as a percent during transfer
 
 ## Troubleshooting

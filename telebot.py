@@ -48,7 +48,6 @@ ACTIVE_DOWNLOADS: dict[str, dict] = {}
 
 def get_media(message: Message):
     media_types = [
-        ("document", message.document),
         ("video", message.video),
         ("audio", message.audio),
         ("voice", message.voice),
@@ -72,7 +71,6 @@ def build_download_filename(message: Message, media_type: str, media) -> str:
         file_unique_id = getattr(media, "file_unique_id", None) or "file"
 
         default_extensions = {
-            "document": ".bin",
             "video": ".mp4",
             "audio": ".mp3",
             "voice": ".ogg",
@@ -187,7 +185,7 @@ def make_download_progress_callback(task_id: str, status_message: Message, task_
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(client: Client, message: Message):
     await message.reply_text(
-        "فایل بفرست. روی پیام وضعیت هم می‌تونی /cancel ریپلای کنی تا کار لغو بشه."
+        "مدیا بفرست. روی پیام وضعیت هم می‌تونی /cancel ریپلای کنی تا کار لغو بشه."
     )
 
 
@@ -266,8 +264,7 @@ async def cancel_handler(client: Client, message: Message):
 @app.on_message(
     filters.private
     & (
-        filters.document
-        | filters.video
+        filters.video
         | filters.audio
         | filters.voice
         | filters.photo
