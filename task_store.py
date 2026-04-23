@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import re
 from html import escape
@@ -12,6 +14,7 @@ QUEUE_FILE = QUEUE_DIR / "tasks.jsonl"
 PROCESSING_FILE = QUEUE_DIR / "processing.json"
 FAILED_FILE = QUEUE_DIR / "failed.jsonl"
 CANCEL_DIR = QUEUE_DIR / "cancelled"
+LRM = "\u200e"
 
 
 def ensure_storage_dirs() -> None:
@@ -69,6 +72,10 @@ def truncate_middle(text: str, max_length: int = 42) -> str:
     return f"{text[:keep_left]}...{text[-keep_right:]}"
 
 
+def ltr_code(text: str) -> str:
+    return f"<code>{LRM}{escape(text)}{LRM}</code>"
+
+
 def build_status_text(
     *,
     task_id: str,
@@ -82,41 +89,41 @@ def build_status_text(
     note: str | None = None,
     attempt_text: str | None = None,
 ) -> str:
-    safe_task_id = escape(task_id or "-")
-    safe_file_name = escape(truncate_middle(file_name or "file"))
+    safe_task_id = task_id or "-"
+    safe_file_name = truncate_middle(file_name or "file")
     safe_stage = escape(stage)
     safe_upload_status = escape(upload_status)
     download_value = max(0, min(100, download_percent))
     upload_value = max(0, min(100, upload_percent))
+    safe_size = human_size(file_size)
 
     lines = [
         "<b>🎬 Tele2Rub</b>",
         f"<b>{safe_stage}</b>",
         f"{safe_upload_status}",
         "",
-        f"🎞 <b>ویدیو:</b> <code>{safe_file_name}</code>",
-        f"📦 <b>حجم:</b> {escape(human_size(file_size))}",
-        f"🆔 <b>کد:</b> <code>{safe_task_id}</code>",
+        "🎞 <b>ویدیو</b>",
+        ltr_code(safe_file_name),
+        "📦 <b>حجم</b>",
+        ltr_code(safe_size),
+        "🆔 <b>کد</b>",
+        ltr_code(safe_task_id),
         "",
-        f"⬇️ <b>دریافت:</b> <code>{progress_meter(download_value)}</code> {download_value}%",
-        f"⬆️ <b>ارسال:</b> <code>{progress_meter(upload_value)}</code> {upload_value}%",
+        "⬇️ <b>دریافت</b>",
+        f"{ltr_code(progress_meter(download_value))} {ltr_code(f'{download_value}%')}",
+        "⬆️ <b>ارسال</b>",
+        f"{ltr_code(progress_meter(upload_value))} {ltr_code(f'{upload_value}%')}",
     ]
 
     if attempt_text:
-        lines.append(f"🔁 <b>تلاش:</b> {escape(attempt_text)}")
+        lines.extend(["🔁 <b>تلاش</b>", ltr_code(attempt_text)])
 
     if queue_position is not None:
-        lines.append(f"⏳ <b>صف:</b> {queue_position}")
+        lines.extend(["⏳ <b>صف</b>", ltr_code(str(queue_position))])
 
     if note:
         lines.append(escape(note))
 
-    lines.extend(
-        [
-            "",
-            f"🛑 لغو: <code>/cancel {safe_task_id}</code>",
-        ]
-    )
     return "\n".join(lines)
 
 

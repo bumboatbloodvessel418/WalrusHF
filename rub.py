@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import time
@@ -75,6 +77,7 @@ def update_telegram_status(
     upload_status: str,
     note: str | None = None,
     attempt_text: str | None = None,
+    action: str | None = "cancel",
 ) -> None:
     if not BOT_TOKEN:
         return
@@ -84,25 +87,38 @@ def update_telegram_status(
     if not chat_id or not status_message_id:
         return
 
+    payload = {
+        "chat_id": chat_id,
+        "message_id": status_message_id,
+        "text": build_status_text(
+            task_id=task.get("task_id", "-"),
+            file_name=task.get("file_name", Path(task.get("path", "")).name or "file"),
+            file_size=int(task.get("file_size", 0) or 0),
+            stage=stage,
+            download_percent=100,
+            upload_percent=int(task.get("upload_percent", 0) or 0),
+            upload_status=upload_status,
+            note=note,
+            attempt_text=attempt_text or task.get("attempt_text"),
+        ),
+        "parse_mode": "HTML",
+    }
+
+    task_id = task.get("task_id", "")
+    if action and task_id:
+        label = "🔁 تلاش دوباره" if action == "retry" else "🛑 لغو"
+        payload["reply_markup"] = {
+            "inline_keyboard": [
+                [{"text": label, "callback_data": f"{action}:{task_id}"}]
+            ]
+        }
+    else:
+        payload["reply_markup"] = {"inline_keyboard": []}
+
     try:
         requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
-            json={
-                "chat_id": chat_id,
-                "message_id": status_message_id,
-                "text": build_status_text(
-                    task_id=task.get("task_id", "-"),
-                    file_name=task.get("file_name", Path(task.get("path", "")).name or "file"),
-                    file_size=int(task.get("file_size", 0) or 0),
-                    stage=stage,
-                    download_percent=100,
-                    upload_percent=int(task.get("upload_percent", 0) or 0),
-                    upload_status=upload_status,
-                    note=note,
-                    attempt_text=attempt_text or task.get("attempt_text"),
-                ),
-                "parse_mode": "HTML",
-            },
+            json=payload,
             timeout=15,
         )
     except Exception:
@@ -287,6 +303,7 @@ def process_task(task: dict) -> None:
             stage="🛑 لغو شد",
             upload_status="انتقال متوقف شد.",
             attempt_text=task.get("attempt_text"),
+            action=None,
         )
         return
     except Exception:
@@ -302,6 +319,7 @@ def process_task(task: dict) -> None:
         stage="✅ ارسال شد",
         upload_status="ویدیو با موفقیت ارسال شد.",
         attempt_text=task.get("attempt_text"),
+        action=None,
     )
 
 
@@ -328,6 +346,7 @@ def worker_loop():
                 stage="🛑 لغو شد",
                 upload_status="انتقال متوقف شد.",
                 attempt_text=processing_task.get("attempt_text"),
+                action=None,
             )
         except Exception as e:
             processing_task = load_processing() or task
@@ -340,6 +359,7 @@ def worker_loop():
                 stage="❌ ارسال ناموفق",
                 upload_status=f"پس از {MAX_RETRIES} تلاش ارسال نشد.",
                 attempt_text=processing_task.get("attempt_text"),
+                action="retry",
             )
         finally:
             clear_processing()

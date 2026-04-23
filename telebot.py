@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import asyncio
 import os
 import time
@@ -27,6 +29,7 @@ from task_store import (
     find_queued_task,
     is_cancelled,
     load_processing,
+    ltr_code,
     mark_cancelled,
     queue_size,
     read_failed_entries,
@@ -105,9 +108,11 @@ def build_menu_text() -> str:
             "",
             "📊 <b>وضعیت</b> - صف، انتقال فعال و فضای دانلود",
             "📋 <b>انتقال‌ها</b> - لیست کارهای فعال و منتظر",
-            "🔁 <b>تلاش دوباره</b> - /retry <code>task_id</code>",
-            "🧹 <b>پاکسازی</b> - حذف فایل‌های اضافه از downloads",
-            "🛑 <b>لغو</b> - /cancel برای انتخاب از لیست",
+            "🔁 <b>تلاش دوباره</b>",
+            ltr_code("/retry task_id"),
+            "🧹 <b>پاکسازی</b> - حذف فایل‌های اضافه از پوشه دانلود",
+            "🛑 <b>لغو</b>",
+            ltr_code("/cancel"),
         ]
     )
 
@@ -178,9 +183,9 @@ def compact_task_card(prefix: str, task: dict, status: str = "") -> str:
     display_name = safe_filename(f"{stem[:30]}{suffix}", "video")
     size = human_size(int(task.get("file_size", 0) or 0))
     lines = [
-        f"{prefix} <code>{task_id}</code>",
-        f"🎞 {display_name}",
-        f"📦 {size}",
+        f"{prefix} {ltr_code(task_id)}",
+        f"🎞 {ltr_code(display_name)}",
+        f"📦 {ltr_code(size)}",
     ]
 
     if status:
@@ -235,6 +240,15 @@ def build_cancel_keyboard() -> InlineKeyboardMarkup | None:
     return InlineKeyboardMarkup(rows)
 
 
+def status_action_keyboard(task_id: str, action: str = "cancel") -> InlineKeyboardMarkup:
+    if action == "retry":
+        button = InlineKeyboardButton("🔁 تلاش دوباره", callback_data=f"retry:{task_id}")
+    else:
+        button = InlineKeyboardButton("🛑 لغو", callback_data=f"cancel:{task_id}")
+
+    return InlineKeyboardMarkup([[button]])
+
+
 async def send_cancel_picker(message: Message) -> None:
     keyboard = build_cancel_keyboard()
     if not keyboard:
@@ -267,18 +281,25 @@ def build_status_summary() -> str:
     lines = [
         "<b>📊 وضعیت Tele2Rub</b>",
         "",
-        f"⬇️ دریافت فعال: <b>{len(ACTIVE_DOWNLOADS)}</b>",
-        f"🚀 ارسال فعال: <b>{1 if processing else 0}</b>",
-        f"⏳ در صف: <b>{len(queued)}</b>",
-        f"❌ ناموفق: <b>{len(failed_entries)}</b>",
-        f"📁 فایل‌های downloads: <b>{len(files)}</b> / {human_size(sum_file_sizes(files))}",
-        f"🧹 قابل پاکسازی: <b>{len(candidates)}</b> / {human_size(sum_file_sizes(candidates))}",
+        "⬇️ <b>دریافت فعال</b>",
+        ltr_code(str(len(ACTIVE_DOWNLOADS))),
+        "🚀 <b>ارسال فعال</b>",
+        ltr_code(str(1 if processing else 0)),
+        "⏳ <b>در صف</b>",
+        ltr_code(str(len(queued))),
+        "❌ <b>ناموفق</b>",
+        ltr_code(str(len(failed_entries))),
+        "📁 <b>فایل‌های دانلود</b>",
+        ltr_code(f"{len(files)} / {human_size(sum_file_sizes(files))}"),
+        "🧹 <b>قابل پاکسازی</b>",
+        ltr_code(f"{len(candidates)} / {human_size(sum_file_sizes(candidates))}"),
         "",
-        "برای جزئیات: /transfers",
+        "برای جزئیات",
+        ltr_code("/transfers"),
     ]
 
     if candidates:
-        lines.append("برای پاکسازی: /cleanup confirm")
+        lines.extend(["برای پاکسازی", ltr_code("/cleanup confirm")])
 
     return "\n".join(lines)
 
@@ -292,16 +313,18 @@ def build_transfers_summary() -> str:
     if ACTIVE_DOWNLOADS:
         lines.append("<b>⬇️ در حال دریافت</b>")
         for active in list(ACTIVE_DOWNLOADS.values())[:5]:
-            status = f"⬇️ {active.get('download_percent', 0)}%"
+            download_percent = active.get("download_percent", 0)
+            status = f"⬇️ {ltr_code(f'{download_percent}%')}"
             lines.append(compact_task_card("•", active, status))
             lines.append("")
         lines.append("")
 
     if processing:
         lines.append("<b>🚀 در حال ارسال</b>")
-        status = f"⬆️ {processing.get('upload_percent', 0)}%"
+        upload_percent = processing.get("upload_percent", 0)
+        status = f"⬆️ {ltr_code(f'{upload_percent}%')}"
         if processing.get("attempt_text"):
-            status += f"\n🔁 تلاش {processing['attempt_text']}"
+            status += f"\n🔁 <b>تلاش</b>\n{ltr_code(processing['attempt_text'])}"
         lines.append(compact_task_card("•", processing, status))
         lines.append("")
 
@@ -325,7 +348,7 @@ def build_transfers_summary() -> str:
         lines.append("<b>❌ ناموفق قابل تلاش دوباره</b>")
         for task in retryable_failed[:5]:
             task_id = task.get("task_id", "-")
-            lines.append(compact_task_card("•", task, f"🔁 /retry {task_id}"))
+            lines.append(compact_task_card("•", task, f"🔁 {ltr_code(f'/retry {task_id}')}"))
             lines.append("")
         if len(retryable_failed) > 5:
             lines.append(f"… و {len(retryable_failed) - 5} مورد دیگر")
@@ -334,8 +357,10 @@ def build_transfers_summary() -> str:
     if len(lines) == 2:
         lines.append("فعلا انتقال فعالی وجود ندارد.")
 
-    lines.append("🛑 لغو: /cancel <code>task_id</code>")
-    lines.append("🔁 تلاش دوباره: /retry <code>task_id</code>")
+    lines.append("🛑 <b>لغو</b>")
+    lines.append(ltr_code("/cancel task_id"))
+    lines.append("🔁 <b>تلاش دوباره</b>")
+    lines.append(ltr_code("/retry task_id"))
     return "\n".join(lines)
 
 
@@ -343,10 +368,12 @@ def build_cleanup_preview() -> str:
     candidates = cleanup_candidates()
     total_size = sum_file_sizes(candidates)
     lines = [
-        "<b>🧹 پاکسازی downloads</b>",
+        "<b>🧹 پاکسازی پوشه دانلود</b>",
         "",
-        f"فایل قابل حذف: <b>{len(candidates)}</b>",
-        f"فضای قابل آزادسازی: <b>{human_size(total_size)}</b>",
+        "فایل قابل حذف",
+        ltr_code(str(len(candidates))),
+        "فضای قابل آزادسازی",
+        ltr_code(human_size(total_size)),
     ]
 
     if candidates:
@@ -354,8 +381,8 @@ def build_cleanup_preview() -> str:
             [
                 "",
                 "این فایل‌ها در صف یا انتقال فعال نیستند.",
-                "برای تایید حذف بزن:",
-                "<code>/cleanup confirm</code>",
+                "برای تایید حذف بزن",
+                ltr_code("/cleanup confirm"),
             ]
         )
     else:
@@ -407,20 +434,34 @@ def build_download_filename(message: Message, media_type: str, media) -> str:
     return safe_filename(unique_name)
 
 
-async def safe_edit_status(status_message: Message, text: str) -> None:
+async def safe_edit_status(
+    status_message: Message,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
     try:
-        await status_message.edit_text(text, parse_mode=enums.ParseMode.HTML)
+        await status_message.edit_text(
+            text,
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=reply_markup,
+        )
     except Exception:
         pass
 
 
-async def edit_status_by_task(client: Client, task: dict, text: str) -> None:
+async def edit_status_by_task(
+    client: Client,
+    task: dict,
+    text: str,
+    reply_markup: InlineKeyboardMarkup | None = None,
+) -> None:
     try:
         await client.edit_message_text(
             chat_id=task["chat_id"],
             message_id=task["status_message_id"],
             text=text,
             parse_mode=enums.ParseMode.HTML,
+            reply_markup=reply_markup,
         )
     except Exception:
         pass
@@ -552,7 +593,13 @@ def make_download_progress_callback(task_id: str, status_message: Message, task_
             upload_percent=0,
             upload_status="بعد از دریافت وارد صف ارسال می‌شود.",
         )
-        loop.create_task(safe_edit_status(status_message, text))
+        loop.create_task(
+            safe_edit_status(
+                status_message,
+                text,
+                reply_markup=status_action_keyboard(task_id, "cancel"),
+            )
+        )
 
     return progress
 
@@ -622,19 +669,7 @@ async def cleanup_handler(client: Client, message: Message):
     )
 
 
-@app.on_message(filters.private & filters.command("retry"))
-async def retry_handler(client: Client, message: Message):
-    await ensure_bot_commands(client)
-
-    if len(message.command) < 2:
-        await message.reply_text(
-            "🔁 برای تلاش دوباره بزن: /retry <task_id>",
-            reply_markup=MENU_KEYBOARD,
-        )
-        return
-
-    task_id = message.command[1].strip()
-
+async def retry_task_by_id(client: Client, message: Message, task_id: str) -> None:
     if task_id in ACTIVE_DOWNLOADS:
         await message.reply_text(f"⬇️ این انتقال هنوز در حال دریافت است: {task_id}")
         return
@@ -683,12 +718,33 @@ async def retry_handler(client: Client, message: Message):
         upload_status="انتقال دوباره به صف ارسال اضافه شد.",
         queue_position=queue_position,
     )
-    await edit_status_by_task(client, task, text)
+    await edit_status_by_task(
+        client,
+        task,
+        text,
+        reply_markup=status_action_keyboard(task_id, "cancel"),
+    )
 
     await message.reply_text(
         f"🔁 دوباره به صف اضافه شد: {task_id}",
         reply_markup=MENU_KEYBOARD,
     )
+
+
+@app.on_message(filters.private & filters.command("retry"))
+async def retry_handler(client: Client, message: Message):
+    await ensure_bot_commands(client)
+
+    if len(message.command) < 2:
+        await message.reply_text(
+            "\n".join(["🔁 برای تلاش دوباره بزن", ltr_code("/retry task_id")]),
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=MENU_KEYBOARD,
+        )
+        return
+
+    task_id = message.command[1].strip()
+    await retry_task_by_id(client, message, task_id)
 
 
 @app.on_message(filters.private & MENU_BUTTON_FILTER)
@@ -716,6 +772,19 @@ async def cancel_callback_handler(client: Client, callback_query: CallbackQuery)
         pass
 
     await cancel_task_by_id(client, callback_query.message, task_id)
+
+
+@app.on_callback_query(filters.regex(r"^retry:"))
+async def retry_callback_handler(client: Client, callback_query: CallbackQuery):
+    task_id = (callback_query.data or "").split(":", 1)[1].strip()
+    await callback_query.answer("تلاش دوباره ثبت شد.")
+
+    try:
+        await callback_query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+
+    await retry_task_by_id(client, callback_query.message, task_id)
 
 
 @app.on_message(filters.private & filters.command("cancel"))
@@ -768,6 +837,7 @@ async def media_handler(client: Client, message: Message):
             upload_status="ویدیو به زودی دریافت می‌شود.",
         ),
         parse_mode=enums.ParseMode.HTML,
+        reply_markup=status_action_keyboard(task_id, "cancel"),
     )
 
     ACTIVE_DOWNLOADS[task_id] = {
@@ -831,6 +901,7 @@ async def media_handler(client: Client, message: Message):
                 upload_status="منتظر نوبت ارسال به روبیکا.",
                 queue_position=queue_position,
             ),
+            reply_markup=status_action_keyboard(task_id, "cancel"),
         )
 
     except Exception as e:
