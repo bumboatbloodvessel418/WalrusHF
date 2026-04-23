@@ -1,5 +1,6 @@
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 
@@ -11,12 +12,23 @@ rubika_file = BASE_DIR / "rub.py"
 telegram_proc = None
 rubika_proc = None
 
-try:
-    rubika_proc = subprocess.Popen([sys.executable, str(rubika_file)])
-    telegram_proc = subprocess.Popen([sys.executable, str(telegram_file)])
 
-    rubika_proc.wait()
-    telegram_proc.wait()
+def start_process(path: Path):
+    return subprocess.Popen([sys.executable, str(path)])
+
+
+try:
+    rubika_proc = start_process(rubika_file)
+    telegram_proc = start_process(telegram_file)
+
+    while True:
+        if telegram_proc.poll() is not None:
+            break
+
+        if rubika_proc.poll() is not None:
+            rubika_proc = start_process(rubika_file)
+
+        time.sleep(1)
 
 except KeyboardInterrupt:
     pass

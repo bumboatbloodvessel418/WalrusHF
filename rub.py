@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import os
 import time
 from pathlib import Path
@@ -14,10 +15,12 @@ from task_store import (
     build_status_text,
     clear_cancelled,
     clear_processing,
+    clear_worker_pid,
     cleanup_local_file,
     ensure_storage_dirs,
     is_cancelled,
     load_processing,
+    save_worker_pid,
     pop_first_task,
     save_processing,
 )
@@ -180,6 +183,9 @@ def make_upload_progress_callback(task: dict, attempt: int):
             return
 
         percent = min(100, max(0, int((current * 100) / total)))
+        if state["last_percent"] >= 0 and percent < state["last_percent"]:
+            return
+
         now = time.monotonic()
         should_emit = (
             percent == 100
@@ -331,8 +337,32 @@ def process_task(task: dict) -> None:
     )
 
 
+def recover_cancelled_processing_task() -> None:
+    task = load_processing()
+    if not task:
+        return
+
+    task_id = task.get("task_id", "")
+    if not task_id or not is_cancelled(task_id):
+        return
+
+    cleanup_local_file(task.get("path", ""))
+    clear_cancelled(task_id)
+    update_telegram_status(
+        task,
+        stage="🛑 Cancelled",
+        upload_status="Transfer stopped.",
+        attempt_text=task.get("attempt_text"),
+        action=None,
+    )
+    clear_processing()
+
+
 def worker_loop():
+    save_worker_pid(os.getpid())
+    atexit.register(clear_worker_pid)
     ensure_session()
+    recover_cancelled_processing_task()
     print("Rubika worker started.")
 
     while True:

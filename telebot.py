@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import signal
 import time
 import uuid
 from pathlib import Path
@@ -29,6 +30,7 @@ from task_store import (
     find_queued_task,
     is_cancelled,
     load_processing,
+    load_worker_pid,
     ltr_code,
     mark_cancelled,
     queue_size,
@@ -224,13 +226,32 @@ def compact_button_label(prefix: str, task: dict) -> str:
     return f"{prefix} {display_name} - {task_id}"
 
 
+def cancel_requested(task: dict | None) -> bool:
+    if not task:
+        return False
+
+    task_id = task.get("task_id", "")
+    return bool(task.get("cancelled")) or bool(task_id and is_cancelled(task_id))
+
+
+def visible_active_downloads() -> list[dict]:
+    return [task for task in ACTIVE_DOWNLOADS.values() if not cancel_requested(task)]
+
+
+def visible_processing_task() -> dict | None:
+    processing_task = load_processing()
+    if cancel_requested(processing_task):
+        return None
+    return processing_task
+
+
 def cancellable_tasks() -> list[tuple[str, dict]]:
     tasks: list[tuple[str, dict]] = []
 
-    for active in ACTIVE_DOWNLOADS.values():
+    for active in visible_active_downloads():
         tasks.append(("⬇️", active))
 
-    processing_task = load_processing()
+    processing_task = visible_processing_task()
     if processing_task:
         tasks.append(("🚀", processing_task))
 
@@ -400,7 +421,8 @@ async def run_cleanup(message: Message) -> None:
 
 def build_status_summary() -> str:
     queued = read_queue_tasks()
-    processing = load_processing()
+    active_downloads = visible_active_downloads()
+    processing = visible_processing_task()
     failed_entries = read_failed_entries()
     files = iter_download_files()
     candidates = cleanup_candidates()
@@ -408,7 +430,7 @@ def build_status_summary() -> str:
     lines = [
         "<b>📊 Walrus Status</b>",
         "",
-        f"⬇️ <b>Active Downloads:</b> {ltr_code(str(len(ACTIVE_DOWNLOADS)))}",
+        f"⬇️ <b>Active Downloads:</b> {ltr_code(str(len(active_downloads)))}",
         f"🚀 <b>Active Uploads:</b> {ltr_code(str(1 if processing else 0))}",
         f"⏳ <b>Queued:</b> {ltr_code(str(len(queued)))}",
         f"❌ <b>Failed:</b> {ltr_code(str(len(failed_entries)))}",
@@ -421,13 +443,14 @@ def build_status_summary() -> str:
 
 def build_transfers_summary() -> str:
     queued = read_queue_tasks()
-    processing = load_processing()
+    active_downloads = visible_active_downloads()
+    processing = visible_processing_task()
     failed_entries = read_failed_entries()
     lines = ["<b>📋 Transfers</b>", ""]
 
-    if ACTIVE_DOWNLOADS:
+    if active_downloads:
         lines.append("<b>⬇️ Downloading</b>")
-        for active in list(ACTIVE_DOWNLOADS.values())[:5]:
+        for active in active_downloads[:5]:
             download_percent = active.get("download_percent", 0)
             status = f"⬇️ <b>Download:</b> {ltr_code(f'{download_percent}%')}"
             lines.append(compact_task_card("•", active, status))
@@ -604,6 +627,7 @@ async def cancel_task_by_id(client: Client, message: Message, task_id: str) -> N
     processing_task = load_processing()
     if processing_task and processing_task.get("task_id") == task_id:
         mark_cancelled(task_id)
+        worker_stopped = stop_rubika_worker()
         text = build_status_text(
             task_id=task_id,
             file_name=processing_task.get("file_name", Path(processing_task.get("path", "")).name or "file"),
@@ -611,7 +635,11 @@ async def cancel_task_by_id(client: Client, message: Message, task_id: str) -> N
             stage="🛑 Cancelling",
             download_percent=100,
             upload_percent=int(processing_task.get("upload_percent", 0)),
-            upload_status="Stopping at the next safe checkpoint.",
+            upload_status=(
+                "Stopping the upload worker."
+                if worker_stopped
+                else "Stopping at the next safe checkpoint."
+            ),
             attempt_text=processing_task.get("attempt_text"),
         )
         await edit_status_by_task(client, processing_task, text)
@@ -651,6 +679,18 @@ def cleanup_download_artifact(path_like: str) -> None:
         cleanup_local_file(path_like)
     except Exception:
         pass
+
+
+def stop_rubika_worker() -> bool:
+    pid = load_worker_pid()
+    if not pid:
+        return False
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+        return True
+    except OSError:
+        return False
 
 
 def make_download_progress_callback(task_id: str, status_message: Message, task_meta: dict):

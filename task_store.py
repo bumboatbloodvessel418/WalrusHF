@@ -14,6 +14,7 @@ QUEUE_FILE = QUEUE_DIR / "tasks.jsonl"
 PROCESSING_FILE = QUEUE_DIR / "processing.json"
 FAILED_FILE = QUEUE_DIR / "failed.jsonl"
 CANCEL_DIR = QUEUE_DIR / "cancelled"
+WORKER_PID_FILE = QUEUE_DIR / "rub_worker.pid"
 LRM = "\u200e"
 
 
@@ -205,6 +206,29 @@ def load_processing() -> Optional[dict]:
 def clear_processing() -> None:
     if PROCESSING_FILE.exists():
         PROCESSING_FILE.unlink()
+
+
+def save_worker_pid(pid: int) -> None:
+    WORKER_PID_FILE.write_text(str(pid), encoding="utf-8")
+
+
+def load_worker_pid() -> Optional[int]:
+    if not WORKER_PID_FILE.exists():
+        return None
+
+    text = WORKER_PID_FILE.read_text(encoding="utf-8").strip()
+    if not text:
+        return None
+
+    try:
+        return int(text)
+    except ValueError:
+        return None
+
+
+def clear_worker_pid() -> None:
+    if WORKER_PID_FILE.exists():
+        WORKER_PID_FILE.unlink()
 
 
 def append_failed(task: dict, error: str) -> None:
