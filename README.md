@@ -238,13 +238,6 @@ echo "Check sessions with: screen -ls"
 echo "Attach to session with: screen -r $SCREEN_NAME"
 ```
 
-## Project Files
-
-- `main.py` - starts both processes
-- `telebot.py` - Telegram bot, downloads, queueing, status updates, buttons
-- `rub.py` - Rubika uploader, retries, cleanup
-- `task_store.py` - queue and task state helpers
-
 ## Troubleshooting
 
 If the bot does not start:
