@@ -1,4 +1,4 @@
-# Tele2Rub
+# Walrus
 
 Send a video to a Telegram bot and have it uploaded to your Rubika Saved Messages.
 
@@ -8,7 +8,7 @@ This project is shared for research, learning, and personal experimentation.
 Do not use it for abuse, spam, unauthorized access, privacy violations, or any harmful or unlawful purpose.
 You are responsible for using it in a way that respects platform rules, local laws, and other people's rights.
 
-Tele2Rub uses a simple queue-based flow:
+Walrus uses a simple queue-based flow:
 
 1. The Telegram bot receives a video in a private chat.
 2. The file is downloaded into `downloads/`.
@@ -113,8 +113,8 @@ Or simply delete the file and let the app recreate it when needed.
 ## 🛠 Installation
 
 ```bash
-git clone https://github.com/rezaaa/Tele2Rub.git
-cd Tele2Rub
+git clone https://github.com/rezaaa/walrus.git
+cd walrus
 pip install -r requirements.txt
 ```
 
@@ -161,8 +161,8 @@ This starts:
 ## Run with Screen
 
 ```bash
-screen -S tele2rub
-cd /opt/Tele2Rub
+screen -S walrus
+cd /opt/walrus
 source venv/bin/activate
 python main.py
 ```
@@ -176,13 +176,13 @@ Ctrl + A, then D
 Useful commands:
 
 - `screen -ls`
-- `screen -r tele2rub` - attach to the running session
-- `screen -S tele2rub -X quit`
+- `screen -r walrus` - attach to the running session
+- `screen -S walrus -X quit`
 
 If multiple old sessions exist:
 
 ```bash
-for s in $(screen -ls | awk '/tele2rub/ {print $1}'); do
+for s in $(screen -ls | awk '/walrus/ {print $1}'); do
   screen -S "$s" -X quit
 done
 ```
@@ -192,16 +192,16 @@ done
 Typical restart flow:
 
 ```bash
-cd /opt/Tele2Rub
+cd /opt/walrus
 git pull origin main
 source venv/bin/activate
 pip install -r requirements.txt
 
-for s in $(screen -ls | awk '/tele2rub/ {print $1}'); do
+for s in $(screen -ls | awk '/walrus/ {print $1}'); do
   screen -S "$s" -X quit
 done
 
-screen -dmS tele2rub bash -lc 'cd /opt/Tele2Rub && source venv/bin/activate && python main.py'
+screen -dmS walrus bash -lc 'cd /opt/walrus && source venv/bin/activate && python main.py'
 ```
 
 Then verify:
@@ -216,9 +216,9 @@ Optional update script:
 #!/usr/bin/env bash
 set -euo pipefail
 
-APP_DIR="/opt/Tele2Rub"
+APP_DIR="/opt/walrus"
 BRANCH="main"
-SCREEN_NAME="tele2rub"
+SCREEN_NAME="walrus"
 
 echo "==> Updating code"
 cd "$APP_DIR"
@@ -228,7 +228,7 @@ echo "==> Installing dependencies"
 "$APP_DIR/venv/bin/python" -m pip install -r requirements.txt
 
 echo "==> Stopping old screen sessions"
-for s in $(screen -ls | awk '/tele2rub/ {print $1}'); do
+for s in $(screen -ls | awk '/walrus/ {print $1}'); do
   screen -S "$s" -X quit || true
 done
 
@@ -243,13 +243,13 @@ echo "Attach to session with: screen -r $SCREEN_NAME"
 How to use it:
 
 ```bash
-nano /opt/Tele2Rub/update.sh
+nano /opt/walrus/update.sh
 ```
 
 Paste the script, save it, then run:
 
 ```bash
-bash /opt/Tele2Rub/update.sh
+bash /opt/walrus/update.sh
 ```
 
 ## Troubleshooting

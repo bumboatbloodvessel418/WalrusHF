@@ -98,7 +98,7 @@ def build_status_text(
     safe_size = human_size(file_size)
 
     lines = [
-        "<b>🎬 Tele2Rub</b>",
+        "<b>🎬 Walrus</b>",
         f"📍 <b>Status:</b> {safe_stage}",
         f"📝 <b>Note:</b> {safe_upload_status}",
         "",

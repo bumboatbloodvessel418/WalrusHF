@@ -52,7 +52,7 @@ if not API_ID or not API_HASH or not BOT_TOKEN:
     raise RuntimeError("Please set API_ID, API_HASH and BOT_TOKEN in .env")
 
 app = Client(
-    "tel2rub",
+    "walrus",
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
@@ -103,7 +103,7 @@ async def ensure_bot_commands(client: Client) -> None:
 def build_menu_text() -> str:
     return "\n".join(
         [
-            "<b>🎬 Tele2Rub</b>",
+            "<b>🎬 Walrus</b>",
             "📤 <b>Send a video</b> and I will upload it to Rubika Saved Messages.",
         ]
     )
@@ -406,7 +406,7 @@ def build_status_summary() -> str:
     candidates = cleanup_candidates()
 
     lines = [
-        "<b>📊 Tele2Rub Status</b>",
+        "<b>📊 Walrus Status</b>",
         "",
         f"⬇️ <b>Active Downloads:</b> {ltr_code(str(len(ACTIVE_DOWNLOADS)))}",
         f"🚀 <b>Active Uploads:</b> {ltr_code(str(1 if processing else 0))}",
