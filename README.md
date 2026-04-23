@@ -108,7 +108,9 @@ Or simply delete the file and let the app recreate it when needed.
 - Telegram bot token
 - Valid Rubika session support through `rubpy`
 
-## Installation
+---
+
+## 🛠 Installation
 
 ```bash
 git clone https://github.com/rezaaa/Tele2Rub.git
