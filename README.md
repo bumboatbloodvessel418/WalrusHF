@@ -134,6 +134,7 @@ API_ID=your_telegram_api_id
 API_HASH=your_telegram_api_hash
 BOT_TOKEN=your_telegram_bot_token
 RUBIKA_SESSION=rubsession
+OWNER_TELEGRAM_ID=123456789
 ```
 
 Variables:
@@ -142,6 +143,14 @@ Variables:
 - `API_HASH` - from https://my.telegram.org
 - `BOT_TOKEN` - from BotFather
 - `RUBIKA_SESSION` - session name or path used by `rubpy`
+- `OWNER_TELEGRAM_ID` - only this Telegram user ID can use the bot
+
+How to get your Telegram user ID:
+
+- forward one of your messages to [@userinfobot](https://t.me/userinfobot)
+- or message [@RawDataBot](https://t.me/RawDataBot) and use the value in `from.id`
+
+Then put that number into `.env` as `OWNER_TELEGRAM_ID`.
 
 ## First Run
 

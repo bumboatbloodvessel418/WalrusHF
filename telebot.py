@@ -47,6 +47,7 @@ load_dotenv()
 API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "").strip()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
+OWNER_TELEGRAM_ID = int(os.getenv("OWNER_TELEGRAM_ID", "0"))
 
 ensure_storage_dirs()
 
@@ -100,6 +101,27 @@ async def ensure_bot_commands(client: Client) -> None:
         COMMANDS_READY = True
     except Exception:
         pass
+
+
+def is_owner(user_id: int | None) -> bool:
+    return bool(user_id and OWNER_TELEGRAM_ID and user_id == OWNER_TELEGRAM_ID)
+
+
+async def ensure_authorized_message(message: Message) -> bool:
+    if is_owner(getattr(message.from_user, "id", None)):
+        return True
+    return False
+
+
+async def ensure_authorized_callback(callback_query: CallbackQuery) -> bool:
+    if is_owner(getattr(callback_query.from_user, "id", None)):
+        return True
+
+    try:
+        await callback_query.answer("Access denied.", show_alert=True)
+    except Exception:
+        pass
+    return False
 
 
 def build_menu_text() -> str:
@@ -747,24 +769,32 @@ def make_download_progress_callback(task_id: str, status_message: Message, task_
 
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     await ensure_bot_commands(client)
     await send_menu(message)
 
 
 @app.on_message(filters.private & filters.command("status"))
 async def status_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     await ensure_bot_commands(client)
     await send_status_summary(message)
 
 
 @app.on_message(filters.private & filters.command("transfers"))
 async def transfers_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     await ensure_bot_commands(client)
     await send_transfers_summary(message)
 
 
 @app.on_message(filters.private & filters.command("cleanup"))
 async def cleanup_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     await ensure_bot_commands(client)
     command = message.command or []
     confirm = len(command) > 1 and command[1].lower() == "confirm"
@@ -841,6 +871,8 @@ async def retry_task_by_id(client: Client, message: Message, task_id: str) -> No
 
 @app.on_message(filters.private & filters.command("retry"))
 async def retry_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     await ensure_bot_commands(client)
 
     if len(message.command) < 2:
@@ -857,6 +889,8 @@ async def retry_handler(client: Client, message: Message):
 
 @app.on_message(filters.private & MENU_BUTTON_FILTER)
 async def menu_button_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     text = (message.text or "").strip()
 
     if text == BTN_STATUS:
@@ -871,6 +905,8 @@ async def menu_button_handler(client: Client, message: Message):
 
 @app.on_callback_query(filters.regex(r"^menu:"))
 async def menu_callback_handler(client: Client, callback_query: CallbackQuery):
+    if not await ensure_authorized_callback(callback_query):
+        return
     action = (callback_query.data or "").split(":", 1)[1].strip()
     await callback_query.answer()
 
@@ -886,6 +922,8 @@ async def menu_callback_handler(client: Client, callback_query: CallbackQuery):
 
 @app.on_callback_query(filters.regex(r"^cleanup:confirm$"))
 async def cleanup_callback_handler(client: Client, callback_query: CallbackQuery):
+    if not await ensure_authorized_callback(callback_query):
+        return
     await callback_query.answer("Cleanup started.")
 
     try:
@@ -898,6 +936,8 @@ async def cleanup_callback_handler(client: Client, callback_query: CallbackQuery
 
 @app.on_callback_query(filters.regex(r"^cancel:"))
 async def cancel_callback_handler(client: Client, callback_query: CallbackQuery):
+    if not await ensure_authorized_callback(callback_query):
+        return
     task_id = (callback_query.data or "").split(":", 1)[1].strip()
     await callback_query.answer("Cancel requested.")
 
@@ -911,6 +951,8 @@ async def cancel_callback_handler(client: Client, callback_query: CallbackQuery)
 
 @app.on_callback_query(filters.regex(r"^retry:"))
 async def retry_callback_handler(client: Client, callback_query: CallbackQuery):
+    if not await ensure_authorized_callback(callback_query):
+        return
     task_id = (callback_query.data or "").split(":", 1)[1].strip()
     await callback_query.answer("Retry queued.")
 
@@ -924,6 +966,8 @@ async def retry_callback_handler(client: Client, callback_query: CallbackQuery):
 
 @app.on_message(filters.private & filters.command("cancel"))
 async def cancel_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     task_id = None
     if message.command and len(message.command) > 1:
         task_id = message.command[1].strip()
@@ -951,6 +995,8 @@ async def cancel_handler(client: Client, message: Message):
     )
 )
 async def media_handler(client: Client, message: Message):
+    if not await ensure_authorized_message(message):
+        return
     media_type, media = get_media(message)
     if not media:
         await message.reply_text("⚠️ This message cannot be processed.")
