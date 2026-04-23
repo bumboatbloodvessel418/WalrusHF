@@ -104,7 +104,9 @@ async def ensure_bot_commands(client: Client) -> None:
 
 
 def is_owner(user_id: int | None) -> bool:
-    return bool(user_id and OWNER_TELEGRAM_ID and user_id == OWNER_TELEGRAM_ID)
+    if not OWNER_TELEGRAM_ID:
+        return True
+    return bool(user_id and user_id == OWNER_TELEGRAM_ID)
 
 
 async def ensure_authorized_message(message: Message) -> bool:

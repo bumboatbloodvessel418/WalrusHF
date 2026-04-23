@@ -143,7 +143,7 @@ Variables:
 - `API_HASH` - from https://my.telegram.org
 - `BOT_TOKEN` - from BotFather
 - `RUBIKA_SESSION` - session name or path used by `rubpy`
-- `OWNER_TELEGRAM_ID` - only this Telegram user ID can use the bot
+- `OWNER_TELEGRAM_ID` - optional; if set, only this Telegram user ID can use the bot
 
 How to get your Telegram user ID:
 
@@ -151,6 +151,7 @@ How to get your Telegram user ID:
 - or message [@RawDataBot](https://t.me/RawDataBot) and use the value in `from.id`
 
 Then put that number into `.env` as `OWNER_TELEGRAM_ID`.
+If you leave it unset, the bot stays open for everyone.
 
 ## First Run
 
