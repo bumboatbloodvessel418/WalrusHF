@@ -615,6 +615,48 @@ def path_name_from_url(url: str) -> str:
     return Path(unquote(parsed.path or "")).name
 
 
+def summarize_batch_item(result: dict) -> str:
+    icon_map = {
+        "queued": "✅",
+        "cancelled": "🛑",
+        "failed": "❌",
+    }
+    status_map = {
+        "queued": "Queued",
+        "cancelled": "Cancelled",
+        "failed": "Failed",
+    }
+    icon = icon_map.get(result.get("status"), "•")
+    status = status_map.get(result.get("status"), "Updated")
+    file_name = safe_filename(result.get("file_name"), "video.mp4")
+    task_id = result.get("task_id", "-")
+    return f"{icon} {ltr_code(file_name)} {ltr_code(task_id)} {status}"
+
+
+def build_batch_summary_text(results: list[dict]) -> str:
+    queued = sum(1 for result in results if result.get("status") == "queued")
+    cancelled = sum(1 for result in results if result.get("status") == "cancelled")
+    failed = sum(1 for result in results if result.get("status") == "failed")
+
+    lines = [
+        "<b>📦 Batch Finished</b>",
+        "",
+        f"🔗 <b>Links:</b> {ltr_code(str(len(results)))}",
+        f"✅ <b>Queued:</b> {ltr_code(str(queued))}",
+        f"🛑 <b>Cancelled:</b> {ltr_code(str(cancelled))}",
+        f"❌ <b>Failed:</b> {ltr_code(str(failed))}",
+    ]
+
+    if results:
+        lines.extend(["", "<b>Items</b>"])
+        for result in results[:8]:
+            lines.append(summarize_batch_item(result))
+        if len(results) > 8:
+            lines.append(f"... and {len(results) - 8} more")
+
+    return "\n".join(lines)
+
+
 def is_direct_video_filename(name: str) -> bool:
     return Path(name).suffix.lower() in DIRECT_VIDEO_EXTENSIONS
 
@@ -1605,7 +1647,7 @@ async def media_handler(client: Client, message: Message):
         ACTIVE_DOWNLOADS.pop(task_id, None)
 
 
-async def process_direct_video_url(message: Message, url: str) -> None:
+async def process_direct_video_url(message: Message, url: str) -> dict:
     task_id = uuid.uuid4().hex[:10]
     fallback_suffix = Path(path_name_from_url(url)).suffix.lower()
     if fallback_suffix not in DIRECT_VIDEO_EXTENSIONS:
@@ -1671,6 +1713,7 @@ async def process_direct_video_url(message: Message, url: str) -> None:
             downloaded_path=downloaded_path,
             caption="",
         )
+        return {"task_id": task_id, "file_name": file_name, "status": "queued"}
     except Exception as e:
         active = ACTIVE_DOWNLOADS.get(task_id, {})
         was_cancelled = active.get("cancelled") or isinstance(e, DirectDownloadCancelled)
@@ -1689,6 +1732,7 @@ async def process_direct_video_url(message: Message, url: str) -> None:
                     upload_status="Transfer stopped.",
                 ),
             )
+            return {"task_id": task_id, "file_name": file_name, "status": "cancelled"}
         else:
             await safe_edit_status(
                 status,
@@ -1703,6 +1747,7 @@ async def process_direct_video_url(message: Message, url: str) -> None:
                     note=str(e),
                 ),
             )
+            return {"task_id": task_id, "file_name": file_name, "status": "failed"}
     finally:
         ACTIVE_DOWNLOADS.pop(task_id, None)
 
@@ -1726,7 +1771,14 @@ async def direct_video_url_handler(_client: Client, message: Message):
             reply_markup=MENU_KEYBOARD,
         )
 
-    await asyncio.gather(*(process_direct_video_url(message, url) for url in urls))
+    results = await asyncio.gather(*(process_direct_video_url(message, url) for url in urls))
+
+    if len(urls) > 1:
+        await message.reply_text(
+            build_batch_summary_text(results),
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=MENU_KEYBOARD,
+        )
 
 
 if __name__ == "__main__":
