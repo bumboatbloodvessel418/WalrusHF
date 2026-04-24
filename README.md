@@ -55,8 +55,7 @@ Available commands:
 - `/cancel` - show clickable cancel buttons for active jobs
 - `/cancel <task_id>` - cancel a specific task
 - `/retry <task_id>` - requeue a failed task if its local file still exists
-- `/retry all` - requeue every retryable failed task
-- `/retry_all` - same as `/retry all`
+- `/retry_all` - requeue every retryable failed task
 
 Transfer message buttons:
 

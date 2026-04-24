@@ -1394,16 +1394,13 @@ async def retry_handler(client: Client, message: Message):
 
     if len(message.command) < 2:
         await message.reply_text(
-            "🔁 Open Transfers and use a Retry button, or run /retry all.",
+            "🔁 Open Transfers and use a Retry button, or run /retry_all.",
             parse_mode=enums.ParseMode.HTML,
             reply_markup=main_action_keyboard(),
         )
         return
 
     task_id = message.command[1].strip()
-    if task_id.lower() == "all":
-        await retry_all_failed_tasks(client, message)
-        return
     await retry_task_by_id(client, message, task_id)
 
 
