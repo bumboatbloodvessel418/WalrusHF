@@ -203,8 +203,10 @@ def build_status_text(
 
 def env_runtime_settings() -> dict:
     default_session = os.getenv("RUBIKA_SESSION", "rubika_session").strip() or "rubika_session"
+    default_phone = os.getenv("RUBIKA_PHONE", "").strip()
     return {
         "rubika_session": default_session,
+        "rubika_phone": default_phone,
     }
 
 
@@ -216,9 +218,11 @@ def normalize_runtime_settings(settings: Optional[dict] = None) -> dict:
         str(settings.get("rubika_session") or defaults["rubika_session"]).strip()
         or defaults["rubika_session"]
     )
+    rubika_phone = str(settings.get("rubika_phone") or defaults["rubika_phone"]).strip()
 
     return {
         "rubika_session": rubika_session,
+        "rubika_phone": rubika_phone,
         "rubika_target": "me",
     }
 
@@ -241,6 +245,7 @@ def save_runtime_settings(settings: dict) -> dict:
     normalized = normalize_runtime_settings(settings)
     payload = {
         "rubika_session": normalized["rubika_session"],
+        "rubika_phone": normalized["rubika_phone"],
     }
     temp_path = SETTINGS_FILE.with_suffix(".tmp")
     temp_path.write_text(

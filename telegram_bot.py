@@ -255,12 +255,14 @@ def auth_setup_keyboard() -> InlineKeyboardMarkup:
 
 def build_settings_text(note: str | None = None) -> str:
     settings = load_runtime_settings()
+    active_phone = settings.get("rubika_phone") or "Not set"
     lines = [
         "<b>⚙️ Rubika Settings</b>",
         "",
         "Control which Rubika account receives uploads.",
         "",
         f"📱 <b>Current Account:</b> {ltr_code(settings['rubika_session'])}",
+        f"☎️ <b>Active Phone:</b> {ltr_code(active_phone)}",
         f"📬 <b>Upload Destination:</b> {ltr_code('Saved Messages')}",
     ]
 
@@ -607,6 +609,7 @@ async def monitor_rubika_auth_process(chat_id: int, setup_id: str, process) -> N
             del log_tail[:-5]
 
     current = AUTH_SETUPS.get(chat_id)
+    active_phone = current.get("phone_number") if current else None
     if current and current.get("setup_id") == setup_id and current.get("process") is process:
         await cleanup_auth_temp_messages(chat_id)
         clear_auth_setup(chat_id)
@@ -614,6 +617,10 @@ async def monitor_rubika_auth_process(chat_id: int, setup_id: str, process) -> N
         return
 
     if success:
+        if active_phone:
+            settings = load_runtime_settings()
+            settings["rubika_phone"] = active_phone
+            save_runtime_settings(settings)
         await send_settings_panel_to_chat(
             chat_id,
             note="✅ Rubika number updated and the current session was replaced successfully.",
