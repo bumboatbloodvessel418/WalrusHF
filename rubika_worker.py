@@ -289,9 +289,20 @@ def normalize_failed_progress(task: dict) -> None:
 
 
 def compact_error_text(error: Exception | str) -> str:
-    text = " ".join(str(error or "").split()).strip()
+    if isinstance(error, Exception):
+        name = type(error).__name__
+        raw = " ".join(str(error).split()).strip()
+        if raw:
+            text = f"{name}: {raw}"
+        else:
+            fallback = " ".join(repr(error).split()).strip()
+            text = fallback if fallback and fallback != f"{name}()" else name
+    else:
+        text = " ".join(str(error or "").split()).strip()
+
     if not text:
         return "Unknown upload error."
+
     if len(text) <= ERROR_TEXT_LIMIT:
         return text
     return text[: ERROR_TEXT_LIMIT - 3].rstrip() + "..."
@@ -420,7 +431,7 @@ def send_with_retry(
                 raise
 
             last_error = e
-            error_text = str(e).lower()
+            error_text = compact_error_text(e).lower()
             task["attempt_text"] = f"{attempt} of {MAX_RETRIES}"
             task["speed_text"] = None
             task["eta_text"] = None
@@ -429,12 +440,13 @@ def send_with_retry(
 
             transient = is_transient_upload_error(error_text)
             near_complete = int(task.get("upload_percent", 0) or 0) >= 95
+            fallback_name_retry = not used_fallback_name
 
-            if near_complete and not used_fallback_name:
+            if fallback_name_retry:
                 upload_name = build_fallback_upload_name(task, file_path, upload_name)
                 used_fallback_name = True
 
-            if attempt < MAX_RETRIES and (transient or near_complete):
+            if attempt < MAX_RETRIES and (transient or near_complete or fallback_name_retry):
                 delay = RETRY_DELAY * attempt
                 next_attempt_text = f"{attempt + 1} of {MAX_RETRIES}"
                 task["upload_percent"] = 0
@@ -445,9 +457,11 @@ def send_with_retry(
                 reason = (
                     "temporary network issue"
                     if transient
+                    else "retrying with safe filename"
+                    if fallback_name_retry
                     else "failure happened near upload completion"
                 )
-                extra = " Retrying with a short safe filename." if near_complete and used_fallback_name else ""
+                extra = " Retrying with a short safe filename." if fallback_name_retry else ""
                 update_telegram_status(
                     task,
                     stage="⚠️ Retrying",
