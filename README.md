@@ -239,7 +239,13 @@ screen -ls
 screen -r walrus
 ```
 
-On the first Rubika login, the worker may ask for the phone number and OTP in that screen session. Type them directly in the terminal. Detach without stopping the app with `Ctrl + A`, then `D`.
+On the first Rubika login, attach to the screen session and enter the phone number and OTP in that terminal:
+
+```bash
+screen -r walrus
+```
+
+Detach without stopping the app with `Ctrl + A`, then `D`.
 
 ## Update on Server
 

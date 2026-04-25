@@ -76,7 +76,7 @@ def has_session(session_name: str) -> bool:
     return any(path.exists() for path in candidates)
 
 
-def ensure_session(session_name: str) -> None:
+def ensure_session(session_name: str, timeout: int | None = RUBIKA_CONNECT_TIMEOUT) -> None:
     if has_session(session_name):
         return
 
@@ -84,12 +84,15 @@ def ensure_session(session_name: str) -> None:
         client = RubikaClient(name=session_name)
         entered = False
         try:
-            await asyncio.wait_for(client.__aenter__(), timeout=RUBIKA_CONNECT_TIMEOUT)
+            if timeout is None:
+                await client.__aenter__()
+            else:
+                await asyncio.wait_for(client.__aenter__(), timeout=timeout)
             entered = True
             return None
         except asyncio.TimeoutError as exc:
             raise RubikaConnectTimeoutError(
-                f"Rubika connection timed out after {RUBIKA_CONNECT_TIMEOUT}s during session bootstrap."
+                f"Rubika connection timed out after {timeout}s during session bootstrap."
             ) from exc
         finally:
             if entered:
@@ -705,6 +708,9 @@ def worker_loop():
     atexit.register(clear_worker_pid)
     recover_cancelled_processing_task()
     print("Rubika worker started.")
+    settings = load_runtime_settings()
+    print("Checking Rubika session. If this is the first login, enter the phone number and OTP here.")
+    ensure_session(settings["rubika_session"], timeout=None)
 
     while True:
         task = pop_first_task()
