@@ -181,8 +181,8 @@ python3 main.py
 
 This starts:
 
-- `telebot.py` - Telegram receiver and downloader
-- `rub.py` - Rubika upload worker
+- `telegram_bot.py` - Telegram receiver and downloader
+- `rubika_worker.py` - Rubika upload worker
 
 ## Run with Screen
 

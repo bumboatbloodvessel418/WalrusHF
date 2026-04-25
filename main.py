@@ -6,8 +6,8 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 
-telegram_file = BASE_DIR / "telebot.py"
-rubika_file = BASE_DIR / "rub.py"
+telegram_file = BASE_DIR / "telegram_bot.py"
+rubika_file = BASE_DIR / "rubika_worker.py"
 
 telegram_proc = None
 rubika_proc = None
