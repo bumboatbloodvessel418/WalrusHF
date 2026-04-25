@@ -361,17 +361,20 @@ async def prompt_rubika_phone_setup(message: Message, first_setup: bool = False)
     if first_setup:
         lines.extend(
             [
-                "⚠️ No Rubika account is set up yet.",
+                "⚠️ First setup: no Rubika account session exists yet.",
+                "We need to create the Rubika session before uploads can work.",
                 "",
             ]
         )
 
     lines.extend(
         [
-            "📱 Send the Rubika phone number you want to log in with.",
-            "I will send the OTP request and then ask you for the code here.",
+            "1. Send the Rubika phone number you want to log in with.",
+            "2. I will request the Rubika OTP.",
+            "3. Send the OTP code here when it arrives.",
             "",
-            "Your current stored Rubika session will be replaced after successful login.",
+            "If Rubika asks for an account password first, I will ask for that before the OTP.",
+            "The stored Rubika session is replaced only after successful login.",
         ]
     )
     await send_auth_temp_message(message, "\n".join(lines), auth_setup_keyboard())
@@ -452,7 +455,7 @@ async def start_rubika_auth_process(message: Message, phone_number: str) -> None
     await cleanup_auth_temp_messages(message.chat.id)
     await send_auth_temp_message(
         message,
-        "📨 Starting Rubika login and requesting OTP...",
+        "📨 Requesting Rubika OTP now...",
         auth_setup_keyboard(),
     )
 
@@ -488,6 +491,30 @@ async def monitor_rubika_auth_process(chat_id: int, setup_id: str, process) -> N
         if not text:
             continue
 
+        if text.startswith("__AUTH_PASSKEY_PROMPT__:"):
+            hint = text.split(":", 1)[1].strip()
+            current = AUTH_SETUPS.get(chat_id)
+            if (
+                not current
+                or current.get("setup_id") != setup_id
+                or current.get("process") is not process
+            ):
+                return
+            current["stage"] = "await_passkey"
+            await cleanup_auth_temp_messages(chat_id)
+            lines = [
+                "🔑 Rubika requires the account password before it can send the OTP.",
+            ]
+            if hint:
+                lines.append(f"Hint: {hint}")
+            lines.extend(["", "Send the Rubika account password here."])
+            await send_auth_temp_message_to_chat(
+                chat_id,
+                "\n".join(lines),
+                auth_setup_keyboard(),
+            )
+            continue
+
         if text == "__AUTH_OTP_PROMPT__":
             current = AUTH_SETUPS.get(chat_id)
             if (
@@ -500,7 +527,7 @@ async def monitor_rubika_auth_process(chat_id: int, setup_id: str, process) -> N
             await cleanup_auth_temp_messages(chat_id)
             await send_auth_temp_message_to_chat(
                 chat_id,
-                "🔐 OTP received. Send the verification code here.",
+                "🔐 Rubika OTP request was sent. Send the verification code here.",
                 auth_setup_keyboard(),
             )
             continue
@@ -514,7 +541,7 @@ async def monitor_rubika_auth_process(chat_id: int, setup_id: str, process) -> N
                 or current.get("process") is not process
             ):
                 return
-            current["stage"] = "await_otp"
+            current["stage"] = "await_extra_input"
             await cleanup_auth_temp_messages(chat_id)
             await send_auth_temp_message_to_chat(
                 chat_id,
@@ -582,20 +609,20 @@ async def monitor_rubika_auth_process(chat_id: int, setup_id: str, process) -> N
     )
 
 
-async def submit_rubika_otp(message: Message, otp_code: str) -> None:
+async def submit_rubika_auth_input(message: Message, value: str, next_text: str) -> None:
     state = AUTH_SETUPS.get(message.chat.id)
     process = state.get("process") if state else None
-    if not state or state.get("stage") != "await_otp" or not process or not process.stdin:
+    if not state or not process or not process.stdin:
         return
 
-    process.stdin.write(otp_code.strip() + "\n")
+    process.stdin.write(value.strip() + "\n")
     process.stdin.flush()
-    state["stage"] = "verifying_otp"
+    state["stage"] = "waiting_for_helper"
     await cleanup_auth_input_message(message)
     await cleanup_auth_temp_messages(message.chat.id)
     await send_auth_temp_message(
         message,
-        "⏳ Verifying the Rubika OTP...",
+        next_text,
         auth_setup_keyboard(),
     )
 
@@ -613,8 +640,28 @@ async def maybe_handle_auth_input(message: Message) -> bool:
         await start_rubika_auth_process(message, text)
         return True
 
+    if state.get("stage") == "await_passkey":
+        await submit_rubika_auth_input(
+            message,
+            text,
+            "⏳ Checking the Rubika password and requesting OTP...",
+        )
+        return True
+
     if state.get("stage") == "await_otp":
-        await submit_rubika_otp(message, text)
+        await submit_rubika_auth_input(
+            message,
+            text,
+            "⏳ Verifying the Rubika OTP and creating the session...",
+        )
+        return True
+
+    if state.get("stage") == "await_extra_input":
+        await submit_rubika_auth_input(
+            message,
+            text,
+            "⏳ Sending Rubika verification input...",
+        )
         return True
 
     return False

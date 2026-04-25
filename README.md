@@ -178,15 +178,18 @@ If you leave it unset, the bot stays open for everyone.
 
 ## Rubika Login Flow
 
-Rubika account setup happens in the Telegram bot UI. On first setup, send `/start`; if no saved Rubika session exists yet, the bot will ask for the phone number and OTP code.
+Rubika account setup happens completely in the Telegram bot UI. There is no terminal login step.
+
+On first setup, send `/start`. If no saved Rubika session exists yet, the bot will guide you through phone + OTP login and create the session file automatically.
 
 Account setup and account changes work like this:
 
-1. Open `⚙️ Settings`
+1. Send `/start` for first setup, or open `⚙️ Settings`
 2. Tap `📱 Change Account` or run `/set_rubika`
 3. Send the Rubika phone number
-4. Wait for the OTP prompt
-5. Send the OTP code
+4. If Rubika asks for an account password, send it in the bot
+5. Wait for the OTP prompt
+6. Send the OTP code
 
 After a successful login, the current Rubika session is replaced and reused by the worker for future uploads.
 
@@ -203,9 +206,10 @@ If the configured Rubika session does not exist yet, open the Telegram bot and s
 The bot UI will ask for:
 
 1. Your Rubika phone number
-2. The OTP code sent by Rubika
+2. Your Rubika account password, only if Rubika requires it
+3. The OTP code sent by Rubika
 
-After that, the saved session is reused unless you later replace it from Telegram.
+After successful OTP verification, the bot creates the configured Rubika session file, usually `rubsession.rp`, and reuses it unless you later replace it from Telegram.
 
 ## Server Setup With Script
 

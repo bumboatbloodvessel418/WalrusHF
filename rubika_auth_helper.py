@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import argparse
 import asyncio
-import builtins
 import os
+import re
 import shutil
 import signal
 import sys
@@ -13,7 +13,6 @@ from pathlib import Path
 BACKUP_PATHS: list[tuple[Path, Path]] = []
 BACKUP_DIR: Path | None = None
 RESTORED = False
-REQUIRES_USER_VERIFICATION = False
 
 
 def session_base_path(session_name: str) -> Path:
@@ -111,59 +110,109 @@ def install_signal_handlers() -> None:
     signal.signal(signal.SIGINT, handle_abort)
 
 
-def build_input_handler(phone_number: str):
-    def prompt_input(prompt: str = "") -> str:
-        global REQUIRES_USER_VERIFICATION
-        prompt_text = (prompt or "").strip()
-        prompt_lower = prompt_text.lower()
+def convert_farsi_digits(text: str) -> str:
+    return text.translate(str.maketrans("۰۱۲۳۴۵۶۷۸۹", "0123456789"))
 
-        if "correct" in prompt_lower and ("y or n" in prompt_lower or "[y" in prompt_lower):
-            print("__AUTH_CONFIRM_AUTO__", flush=True)
-            return "y"
 
-        if "code" in prompt_lower or "otp" in prompt_lower or "verify" in prompt_lower:
-            REQUIRES_USER_VERIFICATION = True
-            print("__AUTH_OTP_PROMPT__", flush=True)
-        elif "phone" in prompt_lower or "number" in prompt_lower:
-            print("__AUTH_PHONE_AUTO__", flush=True)
-            return phone_number
-        elif prompt_text:
-            REQUIRES_USER_VERIFICATION = True
-            print(f"__AUTH_PROMPT__:{prompt_text}", flush=True)
+def normalize_phone_number(phone_number: str) -> str:
+    phone = convert_farsi_digits(phone_number)
+    phone = phone.strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    match = re.match(r"^(?:\+|00)?(\d{7,15})$", phone)
+    if not match:
+        raise ValueError("Invalid phone number.")
 
-        value = sys.stdin.readline()
-        if not value:
-            raise EOFError("Authentication input stream closed.")
+    normalized = match.group(1)
+    return f"98{normalized[1:]}" if normalized.startswith("0") else normalized
 
-        return value.rstrip("\r\n")
 
-    return prompt_input
+def read_user_input(error_message: str) -> str:
+    value = sys.stdin.readline()
+    if not value:
+        raise EOFError(error_message)
+    return value.strip()
+
+
+def update_status(result) -> str:
+    return str(getattr(result, "status", "") or "")
+
+
+def ensure_ok_status(result, action: str) -> None:
+    status = update_status(result)
+    if status != "OK":
+        raise RuntimeError(f"{action} failed with status {status or 'unknown'}.")
 
 
 async def run_auth(session_name: str, phone_number: str) -> None:
-    global REQUIRES_USER_VERIFICATION
     try:
+        from Crypto.PublicKey import RSA
+        from Crypto.Signature import pkcs1_15
         from rubpy import Client
+        from rubpy.crypto import Crypto
     except Exception as error:
         print(f"__AUTH_ERROR__:Unable to import rubpy: {error}", flush=True)
         raise SystemExit(1)
 
-    REQUIRES_USER_VERIFICATION = False
-    builtins.input = build_input_handler(phone_number)
     backup_existing_session(session_name)
     cleanup_session_files(session_name)
 
     client = Client(name=session_name)
     try:
-        await client.start(phone_number=phone_number)
-        await client.stop()
-        if not REQUIRES_USER_VERIFICATION:
-            raise RuntimeError(
-                "Rubika login finished without asking for verification. The previous session may still be active."
+        await client.connect()
+
+        normalized_phone = normalize_phone_number(phone_number)
+        send_code_result = await client.send_code(phone_number=normalized_phone, send_type="SMS")
+        if update_status(send_code_result) == "SendPassKey":
+            hint = getattr(send_code_result, "hint_pass_key", "") or ""
+            print(f"__AUTH_PASSKEY_PROMPT__:{hint}", flush=True)
+            pass_key = read_user_input("Password input stream closed.")
+            send_code_result = await client.send_code(
+                phone_number=normalized_phone,
+                pass_key=pass_key,
             )
+
+        ensure_ok_status(send_code_result, "OTP request")
+        phone_code_hash = getattr(send_code_result, "phone_code_hash", None)
+        if not phone_code_hash:
+            raise RuntimeError("Rubika did not return an OTP request token.")
+
+        public_key, client.private_key = Crypto.create_keys()
+        print("__AUTH_OTP_PROMPT__", flush=True)
+        phone_code = read_user_input("OTP input stream closed.")
+
+        sign_in_result = await client.sign_in(
+            phone_code=phone_code,
+            phone_number=normalized_phone,
+            phone_code_hash=phone_code_hash,
+            public_key=public_key,
+        )
+        ensure_ok_status(sign_in_result, "OTP verification")
+
+        sign_in_result.auth = Crypto.decrypt_RSA_OAEP(client.private_key, sign_in_result.auth)
+        client.key = Crypto.passphrase(sign_in_result.auth)
+        client.auth = sign_in_result.auth
+        client.decode_auth = Crypto.decode_auth(client.auth)
+        client.import_key = (
+            pkcs1_15.new(RSA.import_key(client.private_key.encode()))
+            if client.private_key is not None
+            else None
+        )
+        client.session.insert(
+            phone_number=sign_in_result.user.phone,
+            auth=client.auth,
+            guid=sign_in_result.user.user_guid,
+            user_agent=client.user_agent,
+            private_key=client.private_key,
+        )
+        await client.register_device(device_model=client.name)
+        await client.stop()
+
         if not any(path.exists() for path in session_candidates(session_name)):
             raise RuntimeError("Authenticated session files were not created.")
     except Exception as error:
+        try:
+            await client.stop()
+        except Exception:
+            pass
         cleanup_session_files(session_name)
         restore_existing_session()
         print(f"__AUTH_ERROR__:{error}", flush=True)
