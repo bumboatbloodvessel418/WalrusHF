@@ -85,12 +85,19 @@ def resolve_task_settings(task: dict) -> dict:
     return normalize_runtime_settings(
         {
             "rubika_session": task.get("rubika_session") or current_settings["rubika_session"],
+            "rubika_target": task.get("rubika_target") or current_settings["rubika_target"],
+            "rubika_target_title": (
+                task.get("rubika_target_title") or current_settings["rubika_target_title"]
+            ),
+            "rubika_target_type": (
+                task.get("rubika_target_type") or current_settings["rubika_target_type"]
+            ),
         }
     )
 
 
 def format_destination_label(settings: dict) -> str:
-    return "Saved Messages"
+    return str(settings.get("rubika_target_title") or "Saved Messages")
 
 
 def should_keep_extension(filename: str) -> bool:
@@ -599,6 +606,8 @@ def process_task(task: dict) -> None:
     settings = resolve_task_settings(task)
     task["rubika_session"] = settings["rubika_session"]
     task["rubika_target"] = settings["rubika_target"]
+    task["rubika_target_title"] = settings["rubika_target_title"]
+    task["rubika_target_type"] = settings["rubika_target_type"]
     send_path = original_path
     send_name = normalize_upload_filename(task.get("file_name") or original_path.name, original_path.name)
 

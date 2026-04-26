@@ -8,6 +8,7 @@ import subprocess
 import sys
 import time
 import uuid
+from html import escape
 from pathlib import Path
 from urllib.parse import unquote, urlparse
 
@@ -22,6 +23,7 @@ from pyrogram.types import (
     Message,
     ReplyKeyboardMarkup,
 )
+from rubpy import Client as RubikaClient
 import requests
 
 from task_store import (
@@ -60,6 +62,7 @@ API_ID = int(os.getenv("API_ID", "0"))
 API_HASH = os.getenv("API_HASH", "").strip()
 BOT_TOKEN = os.getenv("BOT_TOKEN", "").strip()
 OWNER_TELEGRAM_ID = int(os.getenv("OWNER_TELEGRAM_ID", "0"))
+RUBIKA_CONNECT_TIMEOUT = int(os.getenv("RUBIKA_CONNECT_TIMEOUT", "25") or 25)
 
 ensure_storage_dirs()
 
@@ -77,6 +80,7 @@ app = Client(
 ACTIVE_DOWNLOADS: dict[str, dict] = {}
 COMMANDS_READY = False
 AUTH_SETUPS: dict[int, dict] = {}
+CHANNEL_CHOICES: dict[int, dict[str, dict]] = {}
 BASE_DIR = Path(__file__).resolve().parent
 RUBIKA_AUTH_HELPER = BASE_DIR / "rubika_auth_helper.py"
 
@@ -243,7 +247,7 @@ def cleanup_keyboard(has_candidates: bool) -> InlineKeyboardMarkup | None:
 
 
 def format_destination_label(settings: dict) -> str:
-    return "Saved Messages"
+    return str(settings.get("rubika_target_title") or "Saved Messages")
 
 
 def rubika_session_exists() -> bool:
@@ -280,8 +284,36 @@ def settings_action_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         [
             [InlineKeyboardButton("📱 Change Account", callback_data="settings:session")],
+            [InlineKeyboardButton("📬 Destination", callback_data="settings:destination")],
         ]
     )
+
+
+def destination_action_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        [
+            [InlineKeyboardButton("☁️ Saved Messages", callback_data="destination:saved")],
+            [InlineKeyboardButton("📣 Choose Channel", callback_data="destination:channels")],
+            [InlineKeyboardButton("↩️ Back", callback_data="destination:back")],
+        ]
+    )
+
+
+def channel_picker_keyboard(chat_id: int, channels: list[dict]) -> InlineKeyboardMarkup:
+    choices: dict[str, dict] = {}
+    rows = []
+
+    for channel in channels[:8]:
+        token = uuid.uuid4().hex[:8]
+        choices[token] = channel
+        title = truncate_button_label(channel.get("title") or "Untitled Channel")
+        rows.append(
+            [InlineKeyboardButton(f"📣 {title}", callback_data=f"destination:set:{token}")]
+        )
+
+    CHANNEL_CHOICES[chat_id] = choices
+    rows.append([InlineKeyboardButton("↩️ Back", callback_data="destination:menu")])
+    return InlineKeyboardMarkup(rows)
 
 
 def auth_setup_keyboard() -> InlineKeyboardMarkup:
@@ -300,14 +332,14 @@ def build_settings_text(note: str | None = None) -> str:
         "",
         f"📱 <b>Current Account:</b> {ltr_code(settings['rubika_session'])}",
         f"☎️ <b>Active Phone:</b> {ltr_code(active_phone)}",
-        f"📬 <b>Upload Destination:</b> {ltr_code('Saved Messages')}",
+        f"📬 <b>Upload Destination:</b> {ltr_code(format_destination_label(settings))}",
     ]
 
     lines.extend(
         [
             "",
-            "Uploads always go to Saved Messages.",
-            "Use the button below to change the Rubika account with phone + OTP.",
+            "Use the buttons below to change the Rubika account or upload destination.",
+            "Already queued transfers keep the destination they were queued with.",
         ]
     )
 
@@ -332,6 +364,133 @@ async def send_settings_panel_to_chat(chat_id: int, note: str | None = None) -> 
         parse_mode=enums.ParseMode.HTML,
         reply_markup=settings_action_keyboard(),
     )
+
+
+def truncate_button_label(text: str, max_length: int = 38) -> str:
+    text = " ".join(str(text or "").split()).strip() or "Untitled"
+    if len(text) <= max_length:
+        return text
+    return f"{text[: max_length - 1].rstrip()}…"
+
+
+def build_destination_text(note: str | None = None) -> str:
+    settings = load_runtime_settings()
+    lines = [
+        "<b>📬 Upload Destination</b>",
+        "",
+        f"Current: {ltr_code(format_destination_label(settings))}",
+        "",
+        "Choose where future uploads should go.",
+        "Already queued transfers will not be changed.",
+    ]
+
+    if note:
+        lines.extend(["", note])
+
+    return "\n".join(lines)
+
+
+async def send_destination_panel(message: Message, note: str | None = None) -> None:
+    await message.reply_text(
+        build_destination_text(note),
+        parse_mode=enums.ParseMode.HTML,
+        reply_markup=destination_action_keyboard(),
+    )
+
+
+def reset_destination_settings() -> dict:
+    settings = load_runtime_settings()
+    settings["rubika_target"] = "me"
+    settings["rubika_target_title"] = "Saved Messages"
+    settings["rubika_target_type"] = "saved"
+    return save_runtime_settings(settings)
+
+
+def rubika_update_to_plain(value):
+    if isinstance(value, dict):
+        return {key: rubika_update_to_plain(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [rubika_update_to_plain(item) for item in value]
+
+    for attr in ("to_dict", "original_update"):
+        try:
+            data = getattr(value, attr)
+        except Exception:
+            data = None
+        if isinstance(data, dict):
+            return rubika_update_to_plain(data)
+
+    return value
+
+
+def nested_text_value(payload: dict, keys: tuple[str, ...]) -> str | None:
+    for key in keys:
+        value = payload.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+
+    for value in payload.values():
+        if isinstance(value, dict):
+            found = nested_text_value(value, keys)
+            if found:
+                return found
+        elif isinstance(value, list):
+            for item in value:
+                if isinstance(item, dict):
+                    found = nested_text_value(item, keys)
+                    if found:
+                        return found
+
+    return None
+
+
+def collect_channel_destinations(payload) -> list[dict]:
+    channels: list[dict] = []
+    seen: set[str] = set()
+
+    def visit(value) -> None:
+        if isinstance(value, list):
+            for item in value:
+                visit(item)
+            return
+
+        if not isinstance(value, dict):
+            return
+
+        guid = value.get("channel_guid") or value.get("object_guid")
+        if isinstance(guid, str) and guid.startswith("c0") and guid not in seen:
+            seen.add(guid)
+            title = nested_text_value(
+                value,
+                ("title", "channel_title", "name", "first_name", "username"),
+            )
+            channels.append(
+                {
+                    "guid": guid,
+                    "title": title or f"Channel {len(channels) + 1}",
+                    "type": "channel",
+                }
+            )
+
+        for item in value.values():
+            if isinstance(item, (dict, list)):
+                visit(item)
+
+    visit(rubika_update_to_plain(payload))
+    return channels
+
+
+async def load_rubika_channels(session_name: str) -> list[dict]:
+    client = RubikaClient(name=session_name)
+    entered = False
+    try:
+        await asyncio.wait_for(client.__aenter__(), timeout=RUBIKA_CONNECT_TIMEOUT)
+        entered = True
+        chats = await client.get_chats()
+        return collect_channel_destinations(chats)
+    finally:
+        if entered:
+            await client.__aexit__(None, None, None)
 
 
 def auth_state(chat_id: int) -> dict | None:
@@ -1718,6 +1877,7 @@ async def queue_downloaded_file(
     source: str = "telegram",
     source_url: str | None = None,
     upload_file_name: str | None = None,
+    runtime_settings: dict | None = None,
 ) -> None:
     file_name = normalize_upload_filename(file_name, downloaded_path.name)
     queue_position = queue_size() + (1 if load_processing() else 0) + 1
@@ -1741,7 +1901,7 @@ async def queue_downloaded_file(
             upload_file_name,
             downloaded_path.name,
         )
-    apply_runtime_settings(task)
+    apply_runtime_settings(task, runtime_settings)
 
     append_task(task)
 
@@ -2047,6 +2207,100 @@ async def settings_callback_handler(client: Client, callback_query: CallbackQuer
 
     if action == "session":
         await prompt_rubika_phone_setup(callback_query.message)
+    elif action == "destination":
+        await send_destination_panel(callback_query.message)
+
+
+@app.on_callback_query(filters.regex(r"^destination:"))
+async def destination_callback_handler(client: Client, callback_query: CallbackQuery):
+    if not await ensure_authorized_callback(callback_query):
+        return
+
+    parts = (callback_query.data or "").split(":")
+    action = parts[1] if len(parts) > 1 else ""
+    chat_id = callback_query.message.chat.id
+
+    if action == "menu":
+        await callback_query.answer()
+        await send_destination_panel(callback_query.message)
+        return
+
+    if action == "back":
+        await callback_query.answer()
+        await send_settings_panel(callback_query.message)
+        return
+
+    if action == "saved":
+        reset_destination_settings()
+        CHANNEL_CHOICES.pop(chat_id, None)
+        await callback_query.answer("Destination set to Saved Messages.")
+        await send_settings_panel(
+            callback_query.message,
+            note="✅ Upload destination changed to Saved Messages.",
+        )
+        return
+
+    if action == "channels":
+        await callback_query.answer("Loading channels...")
+        if not rubika_session_exists():
+            await send_destination_panel(
+                callback_query.message,
+                note="⚠️ Set up the Rubika account first, then choose a channel.",
+            )
+            return
+
+        settings = load_runtime_settings()
+        try:
+            channels = await load_rubika_channels(settings["rubika_session"])
+        except Exception as error:
+            await send_destination_panel(
+                callback_query.message,
+                note=f"⚠️ Could not load Rubika channels: {escape(str(error))}",
+            )
+            return
+
+        if not channels:
+            CHANNEL_CHOICES.pop(chat_id, None)
+            await send_destination_panel(
+                callback_query.message,
+                note=(
+                    "No recent channels were found. Open the channel in Rubika "
+                    "with this account, then try again."
+                ),
+            )
+            return
+
+        await callback_query.message.reply_text(
+            "<b>📣 Choose Channel</b>\n\nSelect a channel for future uploads.",
+            parse_mode=enums.ParseMode.HTML,
+            reply_markup=channel_picker_keyboard(chat_id, channels),
+        )
+        return
+
+    if action == "set" and len(parts) > 2:
+        token = parts[2]
+        channel = CHANNEL_CHOICES.get(chat_id, {}).get(token)
+        if not channel:
+            await callback_query.answer(
+                "This channel list expired. Please load channels again.",
+                show_alert=True,
+            )
+            return
+
+        settings = load_runtime_settings()
+        settings["rubika_target"] = channel["guid"]
+        settings["rubika_target_title"] = channel["title"]
+        settings["rubika_target_type"] = "channel"
+        save_runtime_settings(settings)
+        CHANNEL_CHOICES.pop(chat_id, None)
+        await callback_query.answer("Destination updated.")
+        await send_settings_panel(
+            callback_query.message,
+            note=f"✅ Upload destination changed to {escape(channel['title'])}.",
+        )
+        return
+
+    await callback_query.answer("Unknown destination action.", show_alert=True)
 
 
 @app.on_callback_query(filters.regex(r"^auth:cancel$"))
@@ -2159,6 +2413,7 @@ async def media_handler(client: Client, message: Message):
     file_size = int(getattr(media, "file_size", 0) or 0)
     download_path = DOWNLOAD_DIR / file_name
     started_at = time.time()
+    runtime_settings = load_runtime_settings()
 
     status = await message.reply_text(
         build_status_text(
@@ -2219,6 +2474,7 @@ async def media_handler(client: Client, message: Message):
             started_at=started_at,
             downloaded_path=downloaded_path,
             caption=message.caption or "",
+            runtime_settings=runtime_settings,
         )
 
     except Exception as e:
@@ -2266,6 +2522,7 @@ async def process_direct_file_url(message: Message, url: str) -> dict:
     file_name = build_url_download_filename(url, task_id, fallback_suffix)
     download_path = DOWNLOAD_DIR / file_name
     started_at = time.time()
+    runtime_settings = load_runtime_settings()
     task_meta = {"file_name": file_name, "file_size": 0}
 
     status = await message.reply_text(
@@ -2325,6 +2582,7 @@ async def process_direct_file_url(message: Message, url: str) -> dict:
             source="direct_url",
             source_url=url,
             upload_file_name=file_name,
+            runtime_settings=runtime_settings,
         )
         return {"task_id": task_id, "file_name": file_name, "status": "queued"}
     except Exception as e:

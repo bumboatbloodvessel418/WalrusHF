@@ -23,6 +23,8 @@ You are responsible for using it in a way that respects platform rules, local la
 - Sends a completion notification when a transfer finishes successfully
 - Shows total elapsed transfer time on successful uploads
 - Lets you switch the active Rubika number/session from Telegram
+- Lets you choose the upload destination from Telegram
+- Supports Rubika Saved Messages and recent Rubika channels as destinations
 - Uploads files with their original filename
 
 ## Requirements
@@ -144,6 +146,10 @@ bash update.sh
 
 The script updates the code, refreshes dependencies, restarts the `screen` session, and keeps the same `.env`.
 
+Rubika setup and destination setup are handled from the Telegram bot UI. After updating, open the bot and run `/start` or `/settings` to confirm the Rubika account and upload destination.
+
+If an older install behaves strangely after updating, run the setup again with `bash update.sh`. If the app still does not recover, clone the repository again, copy your `.env`, and complete Rubika setup from the bot UI.
+
 ## Run Manually
 
 If you do not want to use `screen` or `update.sh`:
@@ -196,6 +202,14 @@ Successful transfers:
 
 - the original status message is updated with the total transfer time
 - the bot sends a separate completion message when the upload finishes
+
+Upload destinations:
+
+- default destination is Rubika Saved Messages
+- open `⚙️ Settings` and tap `📬 Destination` to change where future uploads go
+- choose `☁️ Saved Messages` or `📣 Choose Channel`
+- channel uploads require the active Rubika account to have permission to post in that channel
+- already queued transfers keep the destination they had when they were queued
 
 Direct link uploads:
 
@@ -258,9 +272,17 @@ If the bot does not start:
 If uploads fail:
 
 - check the Rubika session
+- if uploading to a channel, confirm the Rubika account can post there
 - review `queue/failed.jsonl`
 - confirm the file still exists in `downloads/`
 - check server memory and swap if the process was killed
+
+Production test checklist:
+
+- send a small file to Saved Messages
+- choose a Rubika channel in `⚙️ Settings` -> `📬 Destination`
+- send a small file to that channel
+- switch back to Saved Messages and confirm uploads return there
 
 ## Inspiration
 

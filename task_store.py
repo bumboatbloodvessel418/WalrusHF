@@ -207,6 +207,9 @@ def env_runtime_settings() -> dict:
     return {
         "rubika_session": default_session,
         "rubika_phone": default_phone,
+        "rubika_target": "me",
+        "rubika_target_title": "Saved Messages",
+        "rubika_target_type": "saved",
     }
 
 
@@ -219,11 +222,35 @@ def normalize_runtime_settings(settings: Optional[dict] = None) -> dict:
         or defaults["rubika_session"]
     )
     rubika_phone = str(settings.get("rubika_phone") or defaults["rubika_phone"]).strip()
+    rubika_target = (
+        str(
+            settings.get("rubika_target")
+            or settings.get("rubika_target_guid")
+            or defaults["rubika_target"]
+        ).strip()
+        or defaults["rubika_target"]
+    )
+    rubika_target_title = (
+        str(
+            settings.get("rubika_target_title")
+            or ("Saved Messages" if rubika_target == "me" else "Rubika Channel")
+        ).strip()
+        or defaults["rubika_target_title"]
+    )
+    rubika_target_type = (
+        str(
+            settings.get("rubika_target_type")
+            or ("saved" if rubika_target == "me" else "channel")
+        ).strip()
+        or defaults["rubika_target_type"]
+    )
 
     return {
         "rubika_session": rubika_session,
         "rubika_phone": rubika_phone,
-        "rubika_target": "me",
+        "rubika_target": rubika_target,
+        "rubika_target_title": rubika_target_title,
+        "rubika_target_type": rubika_target_type,
     }
 
 
@@ -246,6 +273,9 @@ def save_runtime_settings(settings: dict) -> dict:
     payload = {
         "rubika_session": normalized["rubika_session"],
         "rubika_phone": normalized["rubika_phone"],
+        "rubika_target": normalized["rubika_target"],
+        "rubika_target_title": normalized["rubika_target_title"],
+        "rubika_target_type": normalized["rubika_target_type"],
     }
     temp_path = SETTINGS_FILE.with_suffix(".tmp")
     temp_path.write_text(
@@ -260,6 +290,8 @@ def apply_runtime_settings(task: dict, settings: Optional[dict] = None) -> dict:
     runtime_settings = normalize_runtime_settings(settings or load_runtime_settings())
     task["rubika_session"] = runtime_settings["rubika_session"]
     task["rubika_target"] = runtime_settings["rubika_target"]
+    task["rubika_target_title"] = runtime_settings["rubika_target_title"]
+    task["rubika_target_type"] = runtime_settings["rubika_target_type"]
     return task
 
 
