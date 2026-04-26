@@ -277,13 +277,6 @@ If uploads fail:
 - confirm the file still exists in `downloads/`
 - check server memory and swap if the process was killed
 
-Production test checklist:
-
-- send a small file to Saved Messages
-- choose a Rubika channel in `⚙️ Settings` -> `📬 Destination`
-- send a small file to that channel
-- switch back to Saved Messages and confirm uploads return there
-
 ## Inspiration
 
 This project started after a few storage/upload experiments:
