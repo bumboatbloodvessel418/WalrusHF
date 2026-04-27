@@ -2,3 +2,12 @@
 __pycache__/
 *.pyc
 docs/
+downloads/
+queue/
+sessions/
+.env
+venv/
+*.session
+*.session-journal
+run.local.sh
+rubsession.rp
