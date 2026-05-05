@@ -260,7 +260,7 @@ def build_status_text(
     safe_size = human_size(file_size)
 
     lines = [
-        "<b>⛵️ Walrus</b>",
+        "<b>⛵️ WalrusHF</b>",
         f"📍 <b>Status:</b> {safe_stage}",
         f"📝 <b>Note:</b> {safe_upload_status}",
         "",

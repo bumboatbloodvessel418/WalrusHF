@@ -240,7 +240,7 @@ def render_dashboard() -> bytes:
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Walrus Telegram Bot</title>
+  <title>WalrusHF</title>
   <style>
     :root {{
       color-scheme: dark;
@@ -323,7 +323,7 @@ def render_dashboard() -> bytes:
 </head>
 <body>
   <main>
-    <h1>Walrus Telegram Bot</h1>
+    <h1>WalrusHF</h1>
     <div class="topline">
       <p>This Space keeps the Telegram bot and Rubika upload worker running. Use Telegram as the control panel.</p>
       <span id="live" class="live">Live</span>

@@ -233,7 +233,7 @@ def build_menu_text() -> str:
     settings = load_settings_with_phone()
     return "\n".join(
         [
-            "<b>⛵️ Walrus</b>",
+            "<b>⛵️ WalrusHF</b>",
             "📤 <b>Send a file or direct file link</b> and I will upload it to Rubika.",
             "",
             f"📱 <b>Rubika Session:</b> {ltr_code(settings['rubika_session'])}",
@@ -1276,7 +1276,7 @@ def build_status_summary() -> str:
     settings = load_runtime_settings()
 
     lines = [
-        "<b>📊 Walrus Status</b>",
+        "<b>📊 WalrusHF Status</b>",
         "",
         f"📱 <b>Rubika Session:</b> {ltr_code(settings['rubika_session'])}",
         f"📬 <b>Destination:</b> {ltr_code(format_destination_label(settings))}",
