@@ -33,6 +33,9 @@ CANCEL_DIR = QUEUE_DIR / "cancelled"
 WORKER_PID_FILE = QUEUE_DIR / "rub_worker.pid"
 SETTINGS_FILE = QUEUE_DIR / "settings.json"
 TELEGRAM_EVENTS_FILE = QUEUE_DIR / "telegram_events.jsonl"
+PROCESSING_ACTIVE_HEARTBEAT_SECONDS = int(
+    os.getenv("WALRUS_PROCESSING_HEARTBEAT_SECONDS", "120")
+)
 LRM = "\u200e"
 FILENAME_MAX_BYTES = 200
 WINDOWS_RESERVED_FILENAMES = {
@@ -553,6 +556,32 @@ def load_worker_pid() -> Optional[int]:
         return None
 
 
+def worker_process_is_alive() -> bool:
+    pid = load_worker_pid()
+    if not pid:
+        return False
+
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def processing_task_is_active(task: dict | None) -> bool:
+    if not task:
+        return False
+
+    updated_at = float(task.get("processing_updated_at") or 0)
+    if updated_at <= 0:
+        return False
+
+    if time.time() - updated_at > PROCESSING_ACTIVE_HEARTBEAT_SECONDS:
+        return False
+
+    return worker_process_is_alive()
+
+
 def clear_worker_pid() -> None:
     if WORKER_PID_FILE.exists():
         WORKER_PID_FILE.unlink()
@@ -576,6 +605,14 @@ def read_failed_entries() -> list[dict]:
                 continue
             entries.append(json.loads(line))
     return entries
+
+
+def write_failed_entries(entries: list[dict]) -> None:
+    temp_path = FAILED_FILE.with_suffix(".tmp")
+    with open(temp_path, "w", encoding="utf-8") as file:
+        for entry in entries:
+            file.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    temp_path.replace(FAILED_FILE)
 
 
 def find_failed_entry(task_id: str) -> Optional[dict]:

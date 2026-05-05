@@ -138,8 +138,8 @@ After login, the Rubika session is saved under `/data/walrus/sessions`.
 - `/set_rubika` - start Rubika login
 - `/status` - show queue, active transfers, failures, and storage
 - `/transfers` - list active, queued, and retryable transfers
-- `/cleanup` - preview removable downloaded files
-- `/cleanup confirm` - delete safe cleanup candidates
+- `/cleanup` - preview removable files, stale upload state, and dead failed records
+- `/cleanup confirm` - delete safe cleanup candidates and clear stale state
 - `/cancel` - show cancel buttons
 - `/retry <task_id>` - retry one failed transfer
 - `/retry_all` - retry all retryable failed transfers

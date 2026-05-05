@@ -25,8 +25,10 @@ from task_store import (
     clear_worker_pid,
     ensure_storage_dirs,
     human_size,
+    is_cancelled,
     load_processing,
     load_runtime_settings,
+    processing_task_is_active,
     queue_size,
     read_failed_entries,
     runtime_path,
@@ -192,7 +194,14 @@ def dashboard_snapshot() -> dict:
 
     upload_percent = 0
     active = "none"
-    if processing:
+    stale_processing = bool(
+        processing
+        and (
+            not processing_task_is_active(processing)
+            or is_cancelled(processing.get("task_id", ""))
+        )
+    )
+    if processing and not stale_processing:
         upload_percent = int(processing.get("upload_percent", 0) or 0)
         active = (
             f"{processing.get('file_name') or Path(processing.get('path', '')).name} "
@@ -218,6 +227,7 @@ def dashboard_snapshot() -> dict:
             f"Data dir: {DATA_DIR}",
             f"Queue: {queue_count}",
             f"Active upload: {active}",
+            f"Stale upload state: {'yes, run /cleanup confirm' if stale_processing else 'no'}",
             f"Failed transfers: {failed_count}",
             f"Runtime storage: {human_size(runtime_storage)}",
         ]
@@ -241,6 +251,7 @@ def dashboard_snapshot() -> dict:
             "failed": failed_count,
             "runtime_storage": human_size(runtime_storage),
             "upload_percent": upload_percent,
+            "stale_processing": stale_processing,
         },
     }
 
@@ -578,6 +589,7 @@ def render_dashboard() -> bytes:
           <div class="row"><span>Session</span><strong id="session-value">{html.escape(payload["metrics"]["rubika_session"])}</strong></div>
           <div class="row"><span>Destination</span><strong id="destination-value">{html.escape(payload["metrics"]["destination"])}</strong></div>
           <div class="row"><span>Storage</span><strong id="storage-value">{html.escape(payload["metrics"]["runtime_storage"])}</strong></div>
+          <div class="row"><span>Stale State</span><strong id="stale-value">{"yes - run /cleanup confirm" if payload["metrics"]["stale_processing"] else "none"}</strong></div>
           <div class="row"><span>Data Dir</span><strong id="data-dir-value">{html.escape(payload["metrics"]["data_dir"])}</strong></div>
         </div>
       </section>
@@ -618,6 +630,7 @@ def render_dashboard() -> bytes:
       session: document.getElementById("session-value"),
       destination: document.getElementById("destination-value"),
       storage: document.getElementById("storage-value"),
+      stale: document.getElementById("stale-value"),
       dataDir: document.getElementById("data-dir-value"),
       active: document.getElementById("active-value"),
       uploadPercent: document.getElementById("upload-percent-value"),
@@ -657,6 +670,7 @@ def render_dashboard() -> bytes:
         setText(fields.session, metrics.rubika_session);
         setText(fields.destination, metrics.destination);
         setText(fields.storage, metrics.runtime_storage);
+        setText(fields.stale, metrics.stale_processing ? "yes - run /cleanup confirm" : "none");
         setText(fields.dataDir, metrics.data_dir);
         setText(fields.active, metrics.active_upload);
         setText(fields.uploadPercent, `${{metrics.upload_percent || 0}}%`);

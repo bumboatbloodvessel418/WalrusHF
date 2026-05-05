@@ -34,6 +34,7 @@ from task_store import (
     apply_runtime_settings,
     append_task,
     build_status_text,
+    clear_processing,
     cleanup_local_file,
     ensure_storage_dirs,
     find_failed_entry,
@@ -50,6 +51,7 @@ from task_store import (
     mark_cancelled,
     normalize_upload_filename,
     pop_telegram_events,
+    processing_task_is_active,
     queue_size,
     read_failed_entries,
     read_queue_tasks,
@@ -58,6 +60,7 @@ from task_store import (
     safe_filename,
     save_runtime_settings,
     split_name,
+    write_failed_entries,
 )
 
 
@@ -167,7 +170,6 @@ DIRECT_FILE_CONTENT_TYPES = {
 URL_PATTERN = re.compile(r"(?P<url>(?:https?|file)://\S+)", re.IGNORECASE)
 DIRECT_DOWNLOAD_MAX_RETRIES = 5
 DIRECT_DOWNLOAD_RETRY_DELAY = 3
-PROCESSING_ACTIVE_HEARTBEAT_SECONDS = 120
 
 MENU_KEYBOARD = ReplyKeyboardMarkup(
     [
@@ -318,32 +320,6 @@ def load_settings_with_phone() -> dict:
 
     settings["rubika_phone"] = phone
     return save_runtime_settings(settings)
-
-
-def worker_process_is_alive() -> bool:
-    pid = load_worker_pid()
-    if not pid:
-        return False
-
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError:
-        return False
-
-
-def processing_task_is_active(task: dict | None) -> bool:
-    if not task or cancel_requested(task):
-        return False
-
-    updated_at = float(task.get("processing_updated_at") or 0)
-    if updated_at <= 0:
-        return False
-
-    if time.time() - updated_at > PROCESSING_ACTIVE_HEARTBEAT_SECONDS:
-        return False
-
-    return worker_process_is_alive()
 
 
 def settings_action_keyboard() -> InlineKeyboardMarkup:
@@ -1010,7 +986,12 @@ def protected_download_paths() -> set[Path]:
             protected.add(Path(path).resolve())
 
     processing_task = load_processing()
-    if processing_task and processing_task.get("path"):
+    if (
+        processing_task
+        and processing_task_is_active(processing_task)
+        and not cancel_requested(processing_task)
+        and processing_task.get("path")
+    ):
         protected.add(Path(processing_task["path"]).resolve())
 
     return protected
@@ -1029,6 +1010,44 @@ def cleanup_candidates() -> list[Path]:
             candidates.append(path)
 
     return candidates
+
+
+def stale_processing_task() -> dict | None:
+    processing_task = load_processing()
+    if not processing_task:
+        return None
+    if processing_task_is_active(processing_task) and not cancel_requested(processing_task):
+        return None
+    return processing_task
+
+
+def dead_failed_entries() -> list[dict]:
+    entries = []
+    for entry in read_failed_entries():
+        task = entry.get("task") or {}
+        path = Path(task.get("path", ""))
+        if not task.get("path") or not path.exists():
+            entries.append(entry)
+    return entries
+
+
+def prune_dead_failed_entries() -> int:
+    entries = read_failed_entries()
+    kept = []
+    removed = 0
+
+    for entry in entries:
+        task = entry.get("task") or {}
+        path = Path(task.get("path", ""))
+        if not task.get("path") or not path.exists():
+            removed += 1
+            continue
+        kept.append(entry)
+
+    if removed:
+        write_failed_entries(kept)
+
+    return removed
 
 
 def compact_task_card(prefix: str, task: dict, status: str = "") -> str:
@@ -1071,7 +1090,7 @@ def visible_active_downloads() -> list[dict]:
 
 def visible_processing_task() -> dict | None:
     processing_task = load_processing()
-    if not processing_task_is_active(processing_task):
+    if not processing_task_is_active(processing_task) or cancel_requested(processing_task):
         return None
     return processing_task
 
@@ -1216,10 +1235,11 @@ async def send_cancel_picker(message: Message) -> None:
 
 
 async def send_status_summary(message: Message) -> None:
+    has_cleanup = bool(cleanup_candidates() or stale_processing_task() or dead_failed_entries())
     await message.reply_text(
         build_status_summary(),
         parse_mode=enums.ParseMode.HTML,
-        reply_markup=status_summary_keyboard(bool(cleanup_candidates())),
+        reply_markup=status_summary_keyboard(has_cleanup),
     )
 
 
@@ -1233,16 +1253,18 @@ async def send_transfers_summary(message: Message) -> None:
 
 async def send_cleanup_preview(message: Message) -> None:
     candidates = cleanup_candidates()
+    has_cleanup = bool(candidates or stale_processing_task() or dead_failed_entries())
     await message.reply_text(
         build_cleanup_preview(),
         parse_mode=enums.ParseMode.HTML,
-        reply_markup=cleanup_keyboard(bool(candidates)),
+        reply_markup=cleanup_keyboard(has_cleanup),
     )
 
 
 async def run_cleanup(message: Message) -> None:
     candidates = cleanup_candidates()
     total_size = sum_file_sizes(candidates)
+    stale_task = stale_processing_task()
     removed_count = 0
 
     for path in candidates:
@@ -1252,6 +1274,13 @@ async def run_cleanup(message: Message) -> None:
         except OSError:
             pass
 
+    cleared_stale_state = False
+    if stale_task:
+        clear_processing()
+        cleared_stale_state = True
+
+    pruned_failed_count = prune_dead_failed_entries()
+
     await message.reply_text(
         "\n".join(
             [
@@ -1259,6 +1288,8 @@ async def run_cleanup(message: Message) -> None:
                 "",
                 f"Removed files: <b>{removed_count}</b>",
                 f"Freed space: <b>{human_size(total_size)}</b>",
+                f"Cleared stale upload state: <b>{1 if cleared_stale_state else 0}</b>",
+                f"Pruned dead failed records: <b>{pruned_failed_count}</b>",
             ]
         ),
         parse_mode=enums.ParseMode.HTML,
@@ -1346,18 +1377,22 @@ def build_transfers_summary() -> str:
 def build_cleanup_preview() -> str:
     candidates = cleanup_candidates()
     total_size = sum_file_sizes(candidates)
+    stale_task = stale_processing_task()
+    dead_failed_count = len(dead_failed_entries())
     lines = [
-        "<b>🧹 Downloads Cleanup</b>",
+        "<b>🧹 Cleanup</b>",
         "",
         f"🗑 <b>Files to remove:</b> {ltr_code(str(len(candidates)))}",
         f"💾 <b>Space to free:</b> {ltr_code(human_size(total_size))}",
+        f"🚀 <b>Stale upload state:</b> {ltr_code('1' if stale_task else '0')}",
+        f"❌ <b>Dead failed records:</b> {ltr_code(str(dead_failed_count))}",
     ]
 
-    if candidates:
+    if candidates or stale_task or dead_failed_count:
         lines.extend(
             [
                 "",
-                "These files are not active, queued, or processing.",
+                "This only removes files and records that are not active, queued, or retryable.",
             ]
         )
     else:
@@ -2156,7 +2191,7 @@ async def retry_task_by_id(client: Client, message: Message, task_id: str) -> No
         await message.reply_text(f"⏳ This transfer is already queued: {task_id}")
         return
 
-    processing_task = load_processing()
+    processing_task = visible_processing_task()
     if processing_task and processing_task.get("task_id") == task_id:
         await message.reply_text(f"🚀 This transfer is already uploading: {task_id}")
         return
@@ -2237,7 +2272,7 @@ async def retry_all_failed_tasks(client: Client, message: Message) -> None:
             skipped_count += 1
             continue
 
-        processing_task = load_processing()
+        processing_task = visible_processing_task()
         if processing_task and processing_task.get("task_id") == task_id:
             skipped_count += 1
             continue
