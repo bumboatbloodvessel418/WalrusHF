@@ -11,6 +11,8 @@ pinned: false
 
 # WalrusHF
 
+[فارسی](README.fa.md)
+
 WalrusHF runs a Telegram bot inside a Hugging Face Space and uploads received files to Rubika. Telegram is the control panel; the Space page is a live dashboard for process health, queue state, storage, and logs.
 
 ## Features
@@ -22,36 +24,52 @@ WalrusHF runs a Telegram bot inside a Hugging Face Space and uploads received fi
 - Show Telegram progress for download, queue, upload, retries, and failures
 - Support cancel, cleanup, retry, retry-all, and Rubika login commands
 
-## Create The Space
+## Install
 
-Create a new Hugging Face Space with these settings:
+### 1. Create A Hugging Face Space
 
-| Field | Value |
-| --- | --- |
-| Space SDK | `Gradio` |
-| Gradio template | `Blank` |
-| Hardware | `CPU Basic` is enough to start |
-| Visibility | `Private` is recommended |
-| Space name | Any name, for example `walrushf` |
+Create a new Space with these settings:
 
-WalrusHF needs durable storage. On the Create Space page, enable **Mount a bucket to this Space**:
+- **Space SDK:** `Gradio`
+- **Gradio template:** `Blank`
+- **Hardware:** `CPU Basic`
+- **Visibility:** `Private` is recommended
+- **Space name:** any name, for example `walrushf`
 
-| Bucket field | Value |
-| --- | --- |
-| Bucket | Create a new private bucket, or mount an existing private bucket |
-| Example bucket name | `walrushf-storage` |
-| Mount path | `/data` |
-| Access mode | `Read & Write` |
+### 2. Add A Storage Bucket
 
-Mounting storage at `/data` keeps Rubika sessions, queued tasks, downloads, retry state, and cleanup state after the Space restarts. Without `/data`, WalrusHF falls back to `/tmp/walrus`, which can be lost on restart.
+On the same Create Space page, enable **Mount a bucket to this Space**:
 
-## Deploy
+- **Bucket:** create a new private bucket, or mount an existing private bucket
+- **Mount path:** `/data`
+- **Access mode:** `Read & Write`
 
-1. Create the Space using the settings above.
-2. Push this repository to the Space repo.
-3. Add the required secrets.
-4. Restart the Space.
-5. Open the Telegram bot and send `/start`.
+WalrusHF stores sessions, downloads, and queue data under `/data/walrus`. Without durable `/data`, the app falls back to `/tmp/walrus`, which can be lost when the Space restarts.
+
+### 3. Deploy From GitHub
+
+Clone this repo and push it to your Space:
+
+```bash
+git clone git@github.com:rezaaa/walrushf.git
+cd walrushf
+git remote add space https://huggingface.co/spaces/USERNAME/SPACE_NAME
+git push space main:main
+```
+
+Replace `USERNAME/SPACE_NAME` with your Hugging Face Space path.
+
+If the Space already has starter files and the push is rejected:
+
+```bash
+git push --force-with-lease space main:main
+```
+
+### 4. Finish Setup
+
+1. Add the required secrets below in the Space settings.
+2. Restart the Space.
+3. Open your Telegram bot and send `/start`.
 
 Hugging Face runs [app.py](app.py). It starts the Telegram bot, the Rubika upload worker, and the dashboard on port `7860`.
 
