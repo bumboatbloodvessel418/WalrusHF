@@ -79,6 +79,18 @@ def worker_log(message: str) -> None:
     print(f"Rubika worker: {message}", flush=True)
 
 
+def compact_response_text(response: requests.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text[:ERROR_TEXT_LIMIT]
+    if isinstance(payload, dict):
+        description = payload.get("description")
+        if description:
+            return str(description)[:ERROR_TEXT_LIMIT]
+    return str(payload)[:ERROR_TEXT_LIMIT]
+
+
 def ensure_session(session_name: str) -> None:
     if has_rubika_session(session_name):
         return
@@ -123,11 +135,16 @@ def update_telegram_status(
     action: str | None = "cancel",
 ) -> None:
     if not BOT_TOKEN:
+        worker_log("cannot update Telegram status: BOT_TOKEN is missing")
         return
 
     chat_id = task.get("chat_id")
     status_message_id = task.get("status_message_id")
     if not chat_id or not status_message_id:
+        worker_log(
+            "cannot update Telegram status: "
+            f"missing chat_id/status_message_id for task {task.get('task_id', '-')}"
+        )
         return
 
     payload = {
@@ -161,13 +178,43 @@ def update_telegram_status(
         payload["reply_markup"] = {"inline_keyboard": []}
 
     try:
-        requests.post(
+        response = requests.post(
             f"https://api.telegram.org/bot{BOT_TOKEN}/editMessageText",
             json=payload,
             timeout=15,
         )
-    except Exception:
-        pass
+    except Exception as error:
+        worker_log(
+            "Telegram status update request failed "
+            f"task={task_id or '-'} error={compact_error_text(error)}"
+        )
+        return
+
+    if response.status_code != 200:
+        worker_log(
+            "Telegram status update failed "
+            f"task={task_id or '-'} status={response.status_code} "
+            f"error={compact_response_text(response)}"
+        )
+        return
+
+    try:
+        payload_result = response.json()
+    except ValueError:
+        worker_log(
+            "Telegram status update returned non-JSON response "
+            f"task={task_id or '-'} text={response.text[:ERROR_TEXT_LIMIT]}"
+        )
+        return
+
+    if not payload_result.get("ok"):
+        description = str(payload_result.get("description") or "unknown error")
+        if "message is not modified" in description.lower():
+            return
+        worker_log(
+            "Telegram status update rejected "
+            f"task={task_id or '-'} error={description[:ERROR_TEXT_LIMIT]}"
+        )
 
 
 def send_telegram_message(
