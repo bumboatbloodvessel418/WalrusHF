@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from rubpy import Client as RubikaClient
 
 from task_store import (
+    DATA_DIR,
+    QUEUE_FILE,
     append_failed,
     build_status_text,
     clear_cancelled,
@@ -28,9 +30,11 @@ from task_store import (
     normalize_runtime_settings,
     normalize_upload_filename,
     pop_first_task,
+    queue_size,
     save_worker_pid,
     save_processing,
     safe_filename,
+    session_file_candidates,
 )
 
 
@@ -71,12 +75,18 @@ class MissingRubikaSessionError(RuntimeError):
     pass
 
 
+def worker_log(message: str) -> None:
+    print(f"Rubika worker: {message}", flush=True)
+
+
 def ensure_session(session_name: str) -> None:
     if has_rubika_session(session_name):
         return
 
+    candidates = ", ".join(str(path) for path in session_file_candidates(session_name))
     raise MissingRubikaSessionError(
-        "Rubika account is not set up. Open the Telegram bot and run /start or /set_rubika."
+        "Rubika account is not set up. Open the Telegram bot and run /start or /set_rubika. "
+        f"Checked: {candidates}"
     )
 
 
@@ -693,21 +703,33 @@ def worker_loop():
     save_worker_pid(os.getpid())
     atexit.register(clear_worker_pid)
     recover_cancelled_processing_task()
-    print("Rubika worker started.")
+    worker_log(f"started. data_dir={DATA_DIR} queue_file={QUEUE_FILE}")
+    last_idle_log = 0.0
 
     while True:
         task = pop_first_task()
 
         if not task:
+            now = time.time()
+            if now - last_idle_log >= 30:
+                worker_log(f"idle. queue_size={queue_size()}")
+                last_idle_log = now
             time.sleep(0.2)
             continue
 
+        worker_log(
+            "picked task "
+            f"id={task.get('task_id', '-')} "
+            f"file={task.get('file_name') or Path(task.get('path', '')).name}"
+        )
         save_processing(task)
 
         try:
             process_task(task)
+            worker_log(f"completed task id={task.get('task_id', '-')}")
         except CancelledTaskError:
             processing_task = load_processing() or task
+            worker_log(f"cancelled task id={processing_task.get('task_id', '-')}")
             clear_cancelled(processing_task.get("task_id", ""))
             update_telegram_status(
                 processing_task,
@@ -722,6 +744,9 @@ def worker_loop():
             normalize_failed_progress(processing_task)
             save_processing(processing_task)
             error_text = compact_error_text(e)
+            worker_log(
+                f"failed task id={processing_task.get('task_id', '-')} error={error_text}"
+            )
             append_failed(processing_task, error_text)
             update_telegram_status(
                 processing_task,

@@ -95,9 +95,11 @@ def stream_process_output(name: str, proc: subprocess.Popen) -> None:
 
 
 def start_process(script_name: str, name: str) -> subprocess.Popen:
+    env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     proc = subprocess.Popen(
-        [sys.executable, str(BASE_DIR / script_name)],
+        [sys.executable, "-u", str(BASE_DIR / script_name)],
         cwd=str(BASE_DIR),
+        env=env,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

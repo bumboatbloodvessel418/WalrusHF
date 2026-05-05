@@ -402,6 +402,8 @@ def apply_runtime_settings(task: dict, settings: Optional[dict] = None) -> dict:
 def append_task(task: dict) -> None:
     with open(QUEUE_FILE, "a", encoding="utf-8") as file:
         file.write(json.dumps(task, ensure_ascii=False) + "\n")
+        file.flush()
+        os.fsync(file.fileno())
 
 
 def read_queue_tasks() -> list[dict]:
@@ -414,7 +416,10 @@ def read_queue_tasks() -> list[dict]:
             line = line.strip()
             if not line:
                 continue
-            tasks.append(json.loads(line))
+            try:
+                tasks.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue
     return tasks
 
 
