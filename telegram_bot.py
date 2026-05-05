@@ -15,7 +15,7 @@ from pathlib import Path
 from urllib.parse import unquote, urlparse
 
 from dotenv import load_dotenv
-from pyrogram import Client, enums, filters
+from pyrogram import Client, enums, filters, idle
 from pyrogram.types import (
     BotCommand,
     CallbackQuery,
@@ -49,6 +49,7 @@ from task_store import (
     ltr_code,
     mark_cancelled,
     normalize_upload_filename,
+    pop_telegram_events,
     queue_size,
     read_failed_entries,
     read_queue_tasks,
@@ -1602,6 +1603,61 @@ async def edit_status_by_task(
         pass
 
 
+def inline_keyboard_from_payload(markup: dict | None) -> InlineKeyboardMarkup | None:
+    if not markup:
+        return None
+
+    rows = []
+    for row in markup.get("inline_keyboard", []):
+        buttons = []
+        for button in row:
+            text = str(button.get("text") or "")
+            callback_data = button.get("callback_data")
+            if text and callback_data:
+                buttons.append(
+                    InlineKeyboardButton(text, callback_data=str(callback_data))
+                )
+        if buttons:
+            rows.append(buttons)
+
+    return InlineKeyboardMarkup(rows) if rows else None
+
+
+async def handle_worker_telegram_event(event: dict) -> None:
+    event_type = event.get("type")
+    payload = event.get("payload") or {}
+
+    try:
+        if event_type == "edit_message_text":
+            await app.edit_message_text(
+                chat_id=payload["chat_id"],
+                message_id=payload["message_id"],
+                text=payload.get("text", ""),
+                parse_mode=enums.ParseMode.HTML,
+                reply_markup=inline_keyboard_from_payload(payload.get("reply_markup")),
+            )
+        elif event_type == "send_message":
+            await app.send_message(
+                chat_id=payload["chat_id"],
+                text=payload.get("text", ""),
+                parse_mode=enums.ParseMode.HTML,
+                reply_to_message_id=payload.get("reply_to_message_id"),
+            )
+    except Exception as error:
+        print(
+            "Telegram event bridge failed "
+            f"type={event_type} task={event.get('task_id', '-')} error={error}",
+            flush=True,
+        )
+
+
+async def worker_telegram_event_loop() -> None:
+    while True:
+        for event in pop_telegram_events():
+            await handle_worker_telegram_event(event)
+        await asyncio.sleep(1)
+
+
 async def cancel_task_by_id(client: Client, message: Message, task_id: str) -> None:
     active = ACTIVE_DOWNLOADS.get(task_id)
     if active:
@@ -2772,5 +2828,12 @@ async def direct_file_url_handler(_client: Client, message: Message):
         )
 
 
+async def main() -> None:
+    await app.start()
+    asyncio.create_task(worker_telegram_event_loop())
+    await idle()
+    await app.stop()
+
+
 if __name__ == "__main__":
-    app.run()
+    asyncio.run(main())

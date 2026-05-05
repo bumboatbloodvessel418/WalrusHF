@@ -32,6 +32,7 @@ FAILED_FILE = QUEUE_DIR / "failed.jsonl"
 CANCEL_DIR = QUEUE_DIR / "cancelled"
 WORKER_PID_FILE = QUEUE_DIR / "rub_worker.pid"
 SETTINGS_FILE = QUEUE_DIR / "settings.json"
+TELEGRAM_EVENTS_FILE = QUEUE_DIR / "telegram_events.jsonl"
 LRM = "\u200e"
 FILENAME_MAX_BYTES = 200
 WINDOWS_RESERVED_FILENAMES = {
@@ -404,6 +405,50 @@ def append_task(task: dict) -> None:
         file.write(json.dumps(task, ensure_ascii=False) + "\n")
         file.flush()
         os.fsync(file.fileno())
+
+
+def append_telegram_event(event: dict) -> None:
+    ensure_storage_dirs()
+    payload = {
+        "created_at": time.time(),
+        **event,
+    }
+    with open(TELEGRAM_EVENTS_FILE, "a", encoding="utf-8") as file:
+        file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+        file.flush()
+        os.fsync(file.fileno())
+
+
+def pop_telegram_events() -> list[dict]:
+    if not TELEGRAM_EVENTS_FILE.exists():
+        return []
+
+    drain_path = TELEGRAM_EVENTS_FILE.with_name(
+        f"{TELEGRAM_EVENTS_FILE.name}.{os.getpid()}.{time.time_ns()}.drain"
+    )
+    try:
+        TELEGRAM_EVENTS_FILE.replace(drain_path)
+    except FileNotFoundError:
+        return []
+
+    events = []
+    try:
+        with open(drain_path, "r", encoding="utf-8") as file:
+            for line in file:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    finally:
+        try:
+            drain_path.unlink()
+        except OSError:
+            pass
+
+    return events
 
 
 def read_queue_tasks() -> list[dict]:
