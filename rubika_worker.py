@@ -725,23 +725,50 @@ def process_task(task: dict) -> None:
     notify_transfer_complete(task, elapsed_text, settings)
 
 
-def recover_cancelled_processing_task() -> None:
+def recover_processing_task_on_startup() -> None:
     task = load_processing()
     if not task:
         return
 
     task_id = task.get("task_id", "")
-    if not task_id or not is_cancelled(task_id):
+    if not task_id:
+        worker_log("clearing processing state without task_id")
+        clear_processing()
         return
 
-    cleanup_local_file(task.get("path", ""))
-    clear_cancelled(task_id)
+    if is_cancelled(task_id):
+        worker_log(f"recovering cancelled processing task id={task_id}")
+        cleanup_local_file(task.get("path", ""))
+        clear_cancelled(task_id)
+        update_telegram_status(
+            task,
+            stage="🛑 Cancelled",
+            upload_status="Transfer stopped.",
+            attempt_text=task.get("attempt_text"),
+            action=None,
+        )
+        clear_processing()
+        return
+
+    local_path = Path(task.get("path", ""))
+    retryable = local_path.exists()
+    error_text = (
+        "Worker restarted before this upload finished. "
+        "The local file was kept and can be retried."
+        if retryable
+        else "Worker restarted before this upload finished, and the local file is missing."
+    )
+    worker_log(f"recovering stale processing task id={task_id} retryable={retryable}")
+    normalize_failed_progress(task)
+    task["attempt_text"] = task.get("attempt_text") or "interrupted"
+    save_processing(task)
+    append_failed(task, error_text)
     update_telegram_status(
         task,
-        stage="🛑 Cancelled",
-        upload_status="Transfer stopped.",
+        stage="❌ Upload Interrupted",
+        upload_status=error_text,
         attempt_text=task.get("attempt_text"),
-        action=None,
+        action="retry" if retryable else None,
     )
     clear_processing()
 
@@ -749,7 +776,7 @@ def recover_cancelled_processing_task() -> None:
 def worker_loop():
     save_worker_pid(os.getpid())
     atexit.register(clear_worker_pid)
-    recover_cancelled_processing_task()
+    recover_processing_task_on_startup()
     worker_log(f"started. data_dir={DATA_DIR} queue_file={QUEUE_FILE}")
     last_idle_log = 0.0
 
