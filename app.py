@@ -10,6 +10,7 @@ import threading
 import time
 from collections import deque
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from dotenv import load_dotenv
 
@@ -49,8 +50,10 @@ def append_log(source: str, text: str) -> None:
     if not line:
         return
     timestamp = time.strftime("%H:%M:%S")
+    formatted = f"[{timestamp}] {source}: {line}"
+    print(formatted, flush=True)
     with STATE_LOCK:
-        LOG_LINES.append(f"[{timestamp}] {source}: {line}")
+        LOG_LINES.append(formatted)
 
 
 def decode_secret_file(env_name: str, output_path: Path) -> None:
@@ -300,18 +303,25 @@ def render_dashboard() -> bytes:
 
 
 class DashboardHandler(BaseHTTPRequestHandler):
-    def do_GET(self) -> None:
-        if self.path not in {"/", "/health"}:
-            self.send_error(404)
-            return
-
-        body = b"ok\n" if self.path == "/health" else render_dashboard()
-        content_type = "text/plain; charset=utf-8" if self.path == "/health" else "text/html; charset=utf-8"
+    def send_body(self, body: bytes, content_type: str) -> None:
         self.send_response(200)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        path = urlsplit(self.path).path
+        if path == "/health":
+            self.send_body(b"ok\n", "text/plain; charset=utf-8")
+            return
+
+        self.send_body(render_dashboard(), "text/html; charset=utf-8")
+
+    def do_HEAD(self) -> None:
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.end_headers()
 
     def log_message(self, _format: str, *_args) -> None:
         return
