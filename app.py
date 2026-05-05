@@ -652,7 +652,7 @@ def render_dashboard() -> bytes:
     </noscript>
     <footer class="footer">
       <strong>⛵ WalrusHF</strong>
-      <a href="https://github.com/rezaaa/walrushf" target="_blank" rel="noreferrer">github.com/rezaaa/walrushf</a>
+      <a href="https://github.com/rezaaa/WalrusHF" target="_blank" rel="noreferrer">github.com/rezaaa/WalrusHF</a>
     </footer>
   </main>
   <script>

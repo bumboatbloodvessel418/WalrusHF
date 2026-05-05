@@ -54,8 +54,8 @@ WalrusHF stores sessions, downloads, and queue data under `/data/walrus`. Withou
 Clone this repo and push it to your Space:
 
 ```bash
-git clone git@github.com:rezaaa/walrushf.git
-cd walrushf
+git clone git@github.com:rezaaa/WalrusHF.git
+cd WalrusHF
 git remote add space https://huggingface.co/spaces/USERNAME/SPACE_NAME
 git push space main:main
 ```
