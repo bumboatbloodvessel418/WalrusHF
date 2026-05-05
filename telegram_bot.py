@@ -101,11 +101,66 @@ ensure_storage_dirs()
 if not API_ID or not API_HASH or not BOT_TOKEN:
     raise RuntimeError("Please set API_ID, API_HASH and BOT_TOKEN as Space secrets.")
 
+
+def telegram_session_files() -> list[Path]:
+    path = Path(TELEGRAM_SESSION)
+    candidates = [path]
+
+    if path.suffix == "":
+        candidates.append(Path(f"{path}.session"))
+    else:
+        candidates.append(path.with_suffix(".session"))
+
+    for session_path in list(candidates):
+        candidates.extend(
+            [
+                Path(f"{session_path}-journal"),
+                Path(f"{session_path}-shm"),
+                Path(f"{session_path}-wal"),
+            ]
+        )
+
+    unique_candidates = []
+    for candidate in candidates:
+        if candidate not in unique_candidates:
+            unique_candidates.append(candidate)
+    return unique_candidates
+
+
+def clear_telegram_session_files(reason: str) -> None:
+    removed = []
+    for path in telegram_session_files():
+        try:
+            if path.exists():
+                path.unlink()
+                removed.append(path.name)
+        except OSError as error:
+            print(f"Failed to remove Telegram session file {path}: {error}", flush=True)
+
+    if removed:
+        print(
+            f"Cleared Telegram session files after {reason}: {', '.join(removed)}",
+            flush=True,
+        )
+    else:
+        print(f"No Telegram session files found to clear after {reason}.", flush=True)
+
+
+def is_auth_key_duplicated(error: Exception) -> bool:
+    text = str(error)
+    return (
+        type(error).__name__ == "AuthKeyDuplicated"
+        or "AUTH_KEY_DUPLICATED" in text
+        or "AuthKeyDuplicated" in text
+    )
+
+
 app = Client(
     TELEGRAM_SESSION,
     api_id=API_ID,
     api_hash=API_HASH,
     bot_token=BOT_TOKEN,
+    in_memory=True,
 )
 
 ACTIVE_DOWNLOADS: dict[str, dict] = {}
@@ -2900,19 +2955,35 @@ async def direct_file_url_handler(_client: Client, message: Message):
         )
 
 
-async def main() -> None:
+async def start_telegram_client() -> None:
     print(
         "Telegram bot starting "
         f"session={TELEGRAM_SESSION} owner_id={OWNER_TELEGRAM_ID or 'open'}",
         flush=True,
     )
-    await app.start()
+    try:
+        await app.start()
+    except Exception as error:
+        if not is_auth_key_duplicated(error):
+            raise
+
+        print(
+            "Telegram session hit AUTH_KEY_DUPLICATED; clearing bot session and retrying once.",
+            flush=True,
+        )
+        clear_telegram_session_files("AUTH_KEY_DUPLICATED")
+        await app.start()
+
     me = await app.get_me()
     print(
         "Telegram bot started "
         f"username=@{me.username or '-'} id={me.id}",
         flush=True,
     )
+
+
+async def main() -> None:
+    await start_telegram_client()
     asyncio.create_task(worker_telegram_event_loop())
     await idle()
     print("Telegram bot stopping", flush=True)
