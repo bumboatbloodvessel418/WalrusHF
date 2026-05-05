@@ -296,7 +296,8 @@ def render_dashboard() -> bytes:
     body {{
       margin: 0;
       min-height: 100vh;
-      font-family: "Avenir Next", "Trebuchet MS", ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-feature-settings: "cv02", "cv03", "cv04", "cv11";
       background:
         radial-gradient(circle at 12% 8%, rgba(101, 224, 175, 0.18), transparent 28rem),
         radial-gradient(circle at 85% 18%, rgba(232, 195, 109, 0.13), transparent 24rem),
@@ -368,12 +369,19 @@ def render_dashboard() -> bytes:
       text-transform: uppercase;
     }}
     h1 {{
+      display: flex;
+      align-items: center;
+      gap: 14px;
       margin: 0 0 8px;
-      font-family: Georgia, "Times New Roman", serif;
-      font-size: clamp(40px, 7vw, 78px);
-      line-height: 0.92;
-      font-weight: 800;
+      font-size: clamp(38px, 6vw, 68px);
+      line-height: 1;
+      font-weight: 850;
       letter-spacing: 0;
+    }}
+    .title-ship {{
+      font-size: 0.72em;
+      line-height: 1;
+      filter: drop-shadow(0 8px 18px rgba(232, 195, 109, 0.18));
     }}
     p {{
       color: var(--muted);
@@ -526,6 +534,28 @@ def render_dashboard() -> bytes:
     .raw-status {{
       margin-top: 16px;
     }}
+    .footer {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      margin-top: 18px;
+      padding: 16px 2px 0;
+      color: var(--muted);
+      font-size: 13px;
+    }}
+    .footer strong {{
+      color: var(--text);
+      font-weight: 750;
+    }}
+    .footer a {{
+      color: var(--accent);
+      text-decoration: none;
+      border-bottom: 1px solid rgba(101, 224, 175, 0.35);
+    }}
+    .footer a:hover {{
+      border-bottom-color: var(--accent);
+    }}
     a {{ color: var(--accent); }}
     @media (max-width: 860px) {{
       .hero {{
@@ -547,6 +577,10 @@ def render_dashboard() -> bytes:
         grid-template-columns: 1fr;
         gap: 4px;
       }}
+      .footer {{
+        align-items: flex-start;
+        flex-direction: column;
+      }}
     }}
   </style>
 </head>
@@ -556,7 +590,7 @@ def render_dashboard() -> bytes:
       <div class="mark" aria-hidden="true">⛵</div>
       <div>
         <p class="kicker">Hugging Face Control Deck</p>
-        <h1>WalrusHF</h1>
+        <h1><span class="title-ship" aria-hidden="true">⛵</span>WalrusHF</h1>
         <p>This Space keeps the Telegram bot and Rubika upload worker running. Use Telegram as the control panel while this deck watches the machinery.</p>
       </div>
       <span id="live" class="live">Live</span>
@@ -616,6 +650,10 @@ def render_dashboard() -> bytes:
     <noscript>
       <p>JavaScript is disabled. Refresh the page to update status.</p>
     </noscript>
+    <footer class="footer">
+      <strong>⛵ WalrusHF</strong>
+      <a href="https://github.com/rezaaa/walrushf" target="_blank" rel="noreferrer">github.com/rezaaa/walrushf</a>
+    </footer>
   </main>
   <script>
     const statusEl = document.getElementById("status");
