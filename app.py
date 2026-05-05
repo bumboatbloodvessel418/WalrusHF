@@ -276,19 +276,20 @@ def render_dashboard() -> bytes:
   <style>
     :root {{
       color-scheme: dark;
-      --bg: #07100f;
-      --bg-2: #0b1718;
-      --panel: rgba(13, 28, 29, 0.82);
-      --panel-strong: rgba(18, 39, 39, 0.94);
-      --line: rgba(180, 221, 209, 0.16);
-      --line-strong: rgba(180, 221, 209, 0.28);
-      --text: #f4f0df;
-      --muted: #9fb0a8;
-      --accent: #65e0af;
-      --accent-2: #e8c36d;
+      --bg: #080808;
+      --bg-2: #11110f;
+      --panel: rgba(18, 18, 16, 0.88);
+      --panel-strong: rgba(22, 22, 19, 0.96);
+      --line: rgba(255, 255, 255, 0.13);
+      --line-strong: rgba(255, 255, 255, 0.26);
+      --text: #f5f2e8;
+      --muted: #9b9a91;
+      --accent: #ff7a18;
+      --accent-2: #f5f2e8;
       --danger: #ff7a7a;
-      --warn: #f6c66a;
-      --shadow: 0 24px 80px rgba(0, 0, 0, 0.42);
+      --warn: #ffb84d;
+      --glow: rgba(255, 122, 24, 0.28);
+      --shadow: 0 26px 90px rgba(0, 0, 0, 0.48);
     }}
     * {{
       box-sizing: border-box;
@@ -299,9 +300,9 @@ def render_dashboard() -> bytes:
       font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       font-feature-settings: "cv02", "cv03", "cv04", "cv11";
       background:
-        radial-gradient(circle at 12% 8%, rgba(101, 224, 175, 0.18), transparent 28rem),
-        radial-gradient(circle at 85% 18%, rgba(232, 195, 109, 0.13), transparent 24rem),
-        linear-gradient(135deg, var(--bg), var(--bg-2) 52%, #102020);
+        radial-gradient(circle at 12% 7%, rgba(255, 122, 24, 0.14), transparent 27rem),
+        radial-gradient(circle at 86% 0%, rgba(245, 242, 232, 0.08), transparent 29rem),
+        linear-gradient(135deg, var(--bg), var(--bg-2) 48%, #0b0b09);
       color: var(--text);
     }}
     body::before {{
@@ -310,32 +311,62 @@ def render_dashboard() -> bytes:
       inset: 0;
       pointer-events: none;
       background-image:
-        linear-gradient(rgba(244, 240, 223, 0.035) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(244, 240, 223, 0.025) 1px, transparent 1px);
+        linear-gradient(rgba(255, 255, 255, 0.045) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.035) 1px, transparent 1px),
+        radial-gradient(circle, rgba(255,255,255,0.08) 1px, transparent 1.4px);
       background-size: 34px 34px;
+      background-position: 0 0, 0 0, 0 0;
       mask-image: linear-gradient(to bottom, rgba(0,0,0,0.85), transparent 78%);
+    }}
+    body::after {{
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      background:
+        repeating-linear-gradient(0deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 4px),
+        linear-gradient(180deg, transparent, rgba(255, 122, 24, 0.035), transparent);
+      background-size: 100% 220px;
+      animation: scan 7s linear infinite;
+      opacity: 0.4;
+    }}
+    @keyframes scan {{
+      from {{ background-position: 0 -220px; }}
+      to {{ background-position: 0 100vh; }}
     }}
     main {{
       position: relative;
       max-width: 1180px;
       margin: 0 auto;
-      padding: 34px 20px 48px;
+      padding: 28px 20px 46px;
     }}
     .hero {{
       position: relative;
       display: grid;
       grid-template-columns: auto 1fr auto;
       align-items: center;
-      gap: 20px;
-      min-height: 176px;
-      padding: 28px;
+      gap: 22px;
+      min-height: 168px;
+      padding: 18px 28px 30px;
       border: 1px solid var(--line-strong);
       border-radius: 8px;
       background:
-        linear-gradient(135deg, rgba(12, 34, 34, 0.92), rgba(11, 24, 26, 0.78)),
-        repeating-linear-gradient(120deg, rgba(255,255,255,0.03) 0 1px, transparent 1px 18px);
+        linear-gradient(135deg, rgba(17, 17, 15, 0.98), rgba(9, 9, 8, 0.86)),
+        repeating-linear-gradient(120deg, rgba(255,255,255,0.035) 0 1px, transparent 1px 18px);
       box-shadow: var(--shadow);
       overflow: hidden;
+    }}
+    .hero::before {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      background:
+        linear-gradient(90deg, transparent, rgba(255, 122, 24, 0.11), transparent),
+        linear-gradient(180deg, rgba(255,255,255,0.04), transparent 35%);
+      transform: translateX(-68%);
+      animation: sweep 8s ease-in-out infinite;
+      pointer-events: none;
     }}
     .hero::after {{
       content: "";
@@ -344,44 +375,79 @@ def render_dashboard() -> bytes:
       height: 360px;
       right: max(-120px, -9vw);
       top: -145px;
-      border: 1px solid rgba(232, 195, 109, 0.22);
-      border-radius: 50%;
-      box-shadow: inset 0 0 0 36px rgba(232, 195, 109, 0.03);
-      pointer-events: none;
-    }}
-    .mark {{
-      display: grid;
-      place-items: center;
-      width: 72px;
-      height: 72px;
-      border: 1px solid rgba(232, 195, 109, 0.42);
+      border: 1px solid rgba(255, 122, 24, 0.16);
       border-radius: 8px;
-      background: linear-gradient(145deg, rgba(232, 195, 109, 0.18), rgba(101, 224, 175, 0.08));
-      font-size: 38px;
-      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.28);
+      box-shadow:
+        inset 0 0 0 36px rgba(255, 122, 24, 0.018),
+        0 0 80px rgba(255, 122, 24, 0.08);
+      pointer-events: none;
+      transform: rotate(18deg);
     }}
-    .kicker {{
-      margin: 0 0 7px;
-      color: var(--accent-2);
-      font-size: 12px;
-      font-weight: 800;
+    @keyframes sweep {{
+      0%, 54% {{ transform: translateX(-75%); opacity: 0; }}
+      64% {{ opacity: 1; }}
+      100% {{ transform: translateX(82%); opacity: 0; }}
+    }}
+    .chrome {{
+      position: relative;
+      z-index: 1;
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 24px;
+      margin: -4px -10px 10px;
+      padding: 0 0 13px;
+      border-bottom: 1px solid rgba(255,255,255,0.12);
+    }}
+    .chrome span {{
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      background: var(--accent);
+      box-shadow: 17px 0 #f5f2e8, 34px 0 #74736b;
+    }}
+    .chrome b {{
+      margin-left: auto;
+      color: #6f6e67;
+      font-family: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 10px;
+      font-weight: 700;
       letter-spacing: 0.12em;
       text-transform: uppercase;
     }}
-    h1 {{
-      display: flex;
-      align-items: center;
-      gap: 14px;
-      margin: 0 0 8px;
-      font-size: clamp(38px, 6vw, 68px);
-      line-height: 1;
-      font-weight: 850;
-      letter-spacing: 0;
+    .mark {{
+      position: relative;
+      z-index: 1;
+      display: grid;
+      place-items: center;
+      width: 78px;
+      height: 78px;
+      border: 1px solid rgba(255, 122, 24, 0.48);
+      border-radius: 8px;
+      background:
+        radial-gradient(circle at 50% 42%, rgba(255, 122, 24, 0.16), transparent 58%),
+        linear-gradient(145deg, rgba(255, 122, 24, 0.13), rgba(255, 255, 255, 0.04));
+      font-size: 38px;
+      box-shadow:
+        0 0 28px rgba(255, 122, 24, 0.18),
+        inset 0 0 22px rgba(255, 122, 24, 0.08);
     }}
-    .title-ship {{
-      font-size: 0.72em;
-      line-height: 1;
-      filter: drop-shadow(0 8px 18px rgba(232, 195, 109, 0.18));
+    .kicker {{
+      margin: 0 0 7px;
+      color: var(--accent);
+      font-size: 11px;
+      font-weight: 760;
+      letter-spacing: 0.18em;
+      text-transform: uppercase;
+    }}
+    h1 {{
+      margin: 0 0 8px;
+      font-size: clamp(42px, 6.8vw, 74px);
+      line-height: 0.95;
+      font-weight: 860;
+      letter-spacing: -0.035em;
+      text-shadow: 0 0 28px rgba(255, 122, 24, 0.08);
     }}
     p {{
       color: var(--muted);
@@ -390,16 +456,18 @@ def render_dashboard() -> bytes:
       line-height: 1.6;
     }}
     .live {{
+      position: relative;
+      z-index: 1;
       display: flex;
       align-items: center;
       gap: 9px;
       flex: 0 0 auto;
       align-self: start;
       color: var(--text);
-      border: 1px solid rgba(101, 224, 175, 0.28);
+      border: 1px solid rgba(255, 122, 24, 0.38);
       border-radius: 8px;
       padding: 10px 12px;
-      background: rgba(101, 224, 175, 0.08);
+      background: rgba(255, 122, 24, 0.08);
       font-size: 12px;
       font-weight: 800;
       text-transform: uppercase;
@@ -431,8 +499,20 @@ def render_dashboard() -> bytes:
       border: 1px solid var(--line);
       background: var(--panel);
       border-radius: 8px;
-      box-shadow: 0 12px 42px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 12px 42px rgba(0, 0, 0, 0.24);
       backdrop-filter: blur(12px);
+    }}
+    .tile {{
+      position: relative;
+      overflow: hidden;
+    }}
+    .tile::before {{
+      content: "";
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      background: linear-gradient(135deg, rgba(255, 122, 24, 0.08), transparent 34%);
+      opacity: 0.75;
     }}
     .tile {{
       min-height: 116px;
@@ -443,16 +523,17 @@ def render_dashboard() -> bytes:
     }}
     .tile span, .row span {{
       color: var(--muted);
-      font-size: 12px;
-      font-weight: 800;
-      letter-spacing: 0.08em;
+      font-size: 11px;
+      font-weight: 760;
+      letter-spacing: 0.13em;
       text-transform: uppercase;
     }}
     .tile strong {{
       display: block;
       margin-top: 14px;
       color: var(--text);
-      font-size: 20px;
+      font-size: 18px;
+      font-weight: 720;
       line-height: 1.2;
       overflow-wrap: anywhere;
     }}
@@ -477,17 +558,23 @@ def render_dashboard() -> bytes:
       justify-content: space-between;
       gap: 12px;
       font-size: 13px;
-      font-weight: 900;
-      color: var(--accent-2);
+      font-weight: 780;
+      color: var(--accent);
       margin: 0;
       padding: 14px 16px;
       border-bottom: 1px solid var(--line);
       text-transform: uppercase;
-      letter-spacing: 0.1em;
-      background: rgba(255, 255, 255, 0.025);
+      letter-spacing: 0.14em;
+      background:
+        linear-gradient(90deg, rgba(255, 122, 24, 0.08), transparent 72%),
+        rgba(255, 255, 255, 0.018);
     }}
     .panel-body {{
       padding: 10px 16px 16px;
+    }}
+    .hero-copy {{
+      position: relative;
+      z-index: 1;
     }}
     .row {{
       display: grid;
@@ -510,14 +597,14 @@ def render_dashboard() -> bytes:
       margin-top: 12px;
       border-radius: 999px;
       overflow: hidden;
-      border: 1px solid rgba(101, 224, 175, 0.25);
+      border: 1px solid rgba(255, 122, 24, 0.28);
       background: rgba(0, 0, 0, 0.28);
     }}
     .progress-fill {{
       width: 0%;
       height: 100%;
       background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      box-shadow: 0 0 20px rgba(101, 224, 175, 0.5);
+      box-shadow: 0 0 22px rgba(255, 122, 24, 0.42);
       transition: width 350ms ease;
     }}
     pre {{
@@ -526,7 +613,7 @@ def render_dashboard() -> bytes:
       max-height: 460px;
       overflow: auto;
       white-space: pre-wrap;
-      color: #d5e3dc;
+      color: #d6e8ec;
       background:
         linear-gradient(180deg, rgba(0, 0, 0, 0.24), rgba(0, 0, 0, 0.08));
       font: 13px/1.6 "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
@@ -551,7 +638,7 @@ def render_dashboard() -> bytes:
     .footer a {{
       color: var(--accent);
       text-decoration: none;
-      border-bottom: 1px solid rgba(101, 224, 175, 0.35);
+      border-bottom: 1px solid rgba(255, 122, 24, 0.35);
     }}
     .footer a:hover {{
       border-bottom-color: var(--accent);
@@ -566,6 +653,9 @@ def render_dashboard() -> bytes:
         width: 58px;
         height: 58px;
         font-size: 30px;
+      }}
+      .chrome {{
+        margin-bottom: 4px;
       }}
       .live {{
         justify-self: start;
@@ -587,10 +677,11 @@ def render_dashboard() -> bytes:
 <body>
   <main>
     <header class="hero">
+      <div class="chrome" aria-hidden="true"><span></span><b>walrushf.space</b></div>
       <div class="mark" aria-hidden="true">⛵</div>
-      <div>
+      <div class="hero-copy">
         <p class="kicker">Hugging Face Control Deck</p>
-        <h1><span class="title-ship" aria-hidden="true">⛵</span>WalrusHF</h1>
+        <h1>WalrusHF</h1>
         <p>This Space keeps the Telegram bot and Rubika upload worker running. Use Telegram as the control panel while this deck watches the machinery.</p>
       </div>
       <span id="live" class="live">Live</span>
@@ -651,7 +742,7 @@ def render_dashboard() -> bytes:
       <p>JavaScript is disabled. Refresh the page to update status.</p>
     </noscript>
     <footer class="footer">
-      <strong>⛵ WalrusHF</strong>
+      <strong>WalrusHF</strong>
       <a href="https://github.com/rezaaa/WalrusHF" target="_blank" rel="noreferrer">github.com/rezaaa/WalrusHF</a>
     </footer>
   </main>
