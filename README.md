@@ -4,7 +4,6 @@ emoji: 🚀
 colorFrom: blue
 colorTo: green
 sdk: gradio
-sdk_version: 5.0.0
 python_version: '3.11'
 app_file: app.py
 pinned: false
@@ -14,7 +13,7 @@ pinned: false
 
 Walrus is a Hugging Face Spaces app that runs a Telegram bot for transferring files to Rubika.
 
-The Space exposes a small Gradio status page, but Telegram is the real control panel:
+The Space exposes a small status page, but Telegram is the real control panel:
 
 - send Telegram files to the bot
 - send direct `http://` or `https://` file links
@@ -29,7 +28,7 @@ This project is for personal transfer workflows, research, and experimentation. 
 
 ## Hugging Face Space Setup
 
-Create a Python Gradio Space and push this repository. Hugging Face will run `app.py`.
+Create a Python Space and push this repository. Hugging Face will run `app.py`.
 
 Set these Space secrets:
 
@@ -124,4 +123,4 @@ pip install -r requirements.txt
 python app.py
 ```
 
-The Gradio status page listens on `0.0.0.0:${PORT:-7860}`.
+The status page listens on `0.0.0.0:${PORT:-7860}`.

@@ -3,5 +3,3 @@ tgcrypto==1.2.5
 rubpy==7.3.4
 python-dotenv==1.2.2
 requests>=2.32.3,<3
-gradio>=4.44,<6
-huggingface_hub<1.0

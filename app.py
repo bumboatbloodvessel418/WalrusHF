@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import html
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import os
 import subprocess
 import sys
@@ -9,7 +11,6 @@ import time
 from collections import deque
 from pathlib import Path
 
-import gradio as gr
 from dotenv import load_dotenv
 
 from task_store import (
@@ -27,7 +28,6 @@ from task_store import (
     queue_size,
     read_failed_entries,
     runtime_path,
-    save_runtime_settings,
 )
 
 
@@ -173,7 +173,7 @@ def storage_size(path: Path) -> int:
     return sum(item.stat().st_size for item in path.rglob("*") if item.is_file())
 
 
-def dashboard() -> tuple[str, str]:
+def dashboard_text() -> tuple[str, str]:
     ensure_supervisor()
     settings = load_runtime_settings()
     processing = load_processing()
@@ -214,65 +214,112 @@ def dashboard() -> tuple[str, str]:
     return status, logs
 
 
-def save_uploaded_session(session_file: str | None, session_name: str) -> str:
-    if not session_file:
-        return "Upload a Rubika .rp session file first."
+def render_dashboard() -> bytes:
+    status, logs = dashboard_text()
+    page = f"""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="10">
+  <title>Walrus Telegram Bot</title>
+  <style>
+    :root {{
+      color-scheme: dark;
+      --bg: #101314;
+      --panel: #171c1f;
+      --line: #2a3236;
+      --text: #f3f7f5;
+      --muted: #9ba8a3;
+      --accent: #79d69e;
+    }}
+    body {{
+      margin: 0;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }}
+    main {{
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 40px 20px;
+    }}
+    h1 {{
+      margin: 0 0 8px;
+      font-size: 32px;
+      letter-spacing: 0;
+    }}
+    p {{
+      color: var(--muted);
+      margin: 0 0 24px;
+    }}
+    section {{
+      border: 1px solid var(--line);
+      background: var(--panel);
+      border-radius: 8px;
+      margin-top: 16px;
+      overflow: hidden;
+    }}
+    h2 {{
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--accent);
+      margin: 0;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--line);
+      text-transform: uppercase;
+      letter-spacing: 0;
+    }}
+    pre {{
+      margin: 0;
+      padding: 16px;
+      overflow: auto;
+      white-space: pre-wrap;
+      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    }}
+    a {{ color: var(--accent); }}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Walrus Telegram Bot</h1>
+    <p>This Space keeps the Telegram bot and Rubika upload worker running. Use Telegram as the control panel.</p>
+    <section>
+      <h2>Status</h2>
+      <pre>{html.escape(status)}</pre>
+    </section>
+    <section>
+      <h2>Logs</h2>
+      <pre>{html.escape(logs)}</pre>
+    </section>
+  </main>
+</body>
+</html>
+"""
+    return page.encode("utf-8")
 
-    name = (
-        session_name or os.getenv("RUBIKA_SESSION", "rubika_session")
-    ).strip() or "rubika_session"
-    target = runtime_path(name, SESSION_DIR)
-    if target.suffix == "":
-        target = target.with_suffix(".rp")
 
-    target.write_bytes(Path(session_file).read_bytes())
-    current_settings = load_runtime_settings()
-    save_runtime_settings(
-        {
-            **current_settings,
-            "rubika_session": str(target.with_suffix("") if target.suffix == ".rp" else target),
-        }
-    )
-    append_log("setup", f"saved Rubika session to {target.name}")
-    return (
-        f"Saved Rubika session to {target.name}. "
-        "Restart the Space if the worker was already using another session."
-    )
+class DashboardHandler(BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        if self.path not in {"/", "/health"}:
+            self.send_error(404)
+            return
 
+        body = b"ok\n" if self.path == "/health" else render_dashboard()
+        content_type = "text/plain; charset=utf-8" if self.path == "/health" else "text/html; charset=utf-8"
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
 
-with gr.Blocks(title="Walrus Telegram Bot") as demo:
-    gr.Markdown("# Walrus Telegram Bot")
-    gr.Markdown(
-        "This Space keeps the Telegram bot and Rubika upload worker running. "
-        "Use Telegram as the control panel."
-    )
-
-    with gr.Row():
-        status_box = gr.Textbox(label="Status", lines=10)
-        log_box = gr.Textbox(label="Logs", lines=10)
-
-    refresh = gr.Button("Refresh")
-    refresh.click(dashboard, outputs=[status_box, log_box])
-    demo.load(dashboard, outputs=[status_box, log_box])
-
-    with gr.Accordion("Rubika session upload", open=False):
-        session_file = gr.File(label="Rubika .rp session file", type="filepath")
-        session_name = gr.Textbox(
-            label="Session name",
-            value=os.getenv("RUBIKA_SESSION", "rubika_session"),
-        )
-        setup_output = gr.Textbox(label="Setup status")
-        save_session = gr.Button("Save session")
-        save_session.click(
-            save_uploaded_session,
-            inputs=[session_file, session_name],
-            outputs=setup_output,
-        )
+    def log_message(self, _format: str, *_args) -> None:
+        return
 
 
 if __name__ == "__main__":
     ensure_supervisor()
-    demo.queue().launch(
-        server_name="0.0.0.0",
-        server_port=int(os.getenv("PORT", "7860")),
-    )
+    port = int(os.getenv("PORT", "7860"))
+    server = ThreadingHTTPServer(("0.0.0.0", port), DashboardHandler)
+    append_log("web", f"serving dashboard on 0.0.0.0:{port}")
+    server.serve_forever()
