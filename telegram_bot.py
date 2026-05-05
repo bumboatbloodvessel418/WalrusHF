@@ -215,8 +215,29 @@ def is_owner(user_id: int | None) -> bool:
 
 
 async def ensure_authorized_message(message: Message) -> bool:
-    if is_owner(getattr(message.from_user, "id", None)):
+    user_id = getattr(message.from_user, "id", None)
+    if is_owner(user_id):
         return True
+
+    print(
+        "Access denied "
+        f"user_id={user_id} owner_id={OWNER_TELEGRAM_ID} "
+        f"text={(message.text or message.caption or '')[:80]!r}",
+        flush=True,
+    )
+    try:
+        await message.reply_text(
+            "\n".join(
+                [
+                    "⛔️ Access denied.",
+                    f"Your Telegram ID is: <code>{user_id or '-'}</code>",
+                    "Set this value as OWNER_TELEGRAM_ID in the Space secrets, then restart the Space.",
+                ]
+            ),
+            parse_mode=enums.ParseMode.HTML,
+        )
+    except Exception as error:
+        print(f"Failed to send access denied message: {error}", flush=True)
     return False
 
 
@@ -2121,13 +2142,29 @@ async def queue_downloaded_file(
 
 @app.on_message(filters.private & filters.command("start"))
 async def start_handler(client: Client, message: Message):
-    if not await ensure_authorized_message(message):
+    try:
+        print(
+            f"/start received chat_id={message.chat.id} "
+            f"user_id={getattr(message.from_user, 'id', '-')}",
+            flush=True,
+        )
+        if not await ensure_authorized_message(message):
+            return
+        await ensure_bot_commands(client)
+        if not rubika_session_exists():
+            await prompt_rubika_phone_setup(message, first_setup=True)
+            return
+        await send_menu(message)
+    except Exception as error:
+        print(f"/start handler failed: {type(error).__name__}: {error}", flush=True)
+        try:
+            await message.reply_text(
+                "⚠️ /start failed inside the bot. Check the Space logs for the exact error.",
+                reply_markup=MENU_KEYBOARD,
+            )
+        except Exception as reply_error:
+            print(f"/start error reply failed: {reply_error}", flush=True)
         return
-    await ensure_bot_commands(client)
-    if not rubika_session_exists():
-        await prompt_rubika_phone_setup(message, first_setup=True)
-        return
-    await send_menu(message)
 
 
 @app.on_message(filters.private & filters.command("settings"))
@@ -2864,9 +2901,21 @@ async def direct_file_url_handler(_client: Client, message: Message):
 
 
 async def main() -> None:
+    print(
+        "Telegram bot starting "
+        f"session={TELEGRAM_SESSION} owner_id={OWNER_TELEGRAM_ID or 'open'}",
+        flush=True,
+    )
     await app.start()
+    me = await app.get_me()
+    print(
+        "Telegram bot started "
+        f"username=@{me.username or '-'} id={me.id}",
+        flush=True,
+    )
     asyncio.create_task(worker_telegram_event_loop())
     await idle()
+    print("Telegram bot stopping", flush=True)
     await app.stop()
 
 
