@@ -245,6 +245,16 @@ def enrich_web_download(item: dict) -> dict:
     if not task_id:
         return item
 
+    if item.get("cancel_requested") or is_cancelled(task_id):
+        item.update(
+            {
+                "status": "cancelled",
+                "note": item.get("note") or "Cancel requested.",
+                "finished_at": item.get("finished_at") or time.time(),
+            }
+        )
+        return item
+
     queued = {task.get("task_id"): task for task in read_queue_tasks()}
     processing = load_processing()
     failed = failed_task_by_id()
@@ -257,7 +267,6 @@ def enrich_web_download(item: dict) -> dict:
         processing
         and processing.get("task_id") == task_id
         and processing_task_is_active(processing)
-        and not is_cancelled(task_id)
     )
     if processing_active:
         item.update(
@@ -968,6 +977,9 @@ def render_dashboard() -> bytes:
       justify-content: flex-end;
       margin-top: 10px;
     }}
+    .url-tools[hidden] {{
+      display: none;
+    }}
     .mini-button, .web-download button {{
       border: 1px solid rgba(255, 255, 255, 0.18);
       border-radius: 8px;
@@ -997,8 +1009,23 @@ def render_dashboard() -> bytes:
       border-color: rgba(255, 122, 122, 0.34);
     }}
     .web-download[data-status="completed"] {{
-      border-color: rgba(255, 122, 24, 0.28);
-      opacity: 0.74;
+      border-color: rgba(88, 214, 141, 0.36);
+      background: rgba(20, 96, 56, 0.1);
+    }}
+    .web-download[data-status="cancelled"] {{
+      border-color: rgba(255, 207, 112, 0.32);
+      background: rgba(141, 95, 24, 0.09);
+    }}
+    .web-download[data-status="uploading"] {{
+      border-color: rgba(255, 122, 24, 0.34);
+      box-shadow: inset 0 0 0 1px rgba(255, 122, 24, 0.1);
+    }}
+    .web-head {{
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      justify-content: space-between;
+      min-width: 0;
     }}
     .web-download strong {{
       display: block;
@@ -1011,6 +1038,39 @@ def render_dashboard() -> bytes:
       font-family: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
       font-size: 11px;
       text-transform: uppercase;
+    }}
+    .web-download .status-pill {{
+      flex: 0 0 auto;
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      border-radius: 999px;
+      padding: 3px 8px;
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.06);
+      font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-size: 10px;
+      font-weight: 820;
+      letter-spacing: 0;
+      line-height: 1.2;
+    }}
+    .status-pill[data-status="completed"] {{
+      border-color: rgba(88, 214, 141, 0.42);
+      color: #99f2bd;
+      background: rgba(88, 214, 141, 0.12);
+    }}
+    .status-pill[data-status="cancelled"] {{
+      border-color: rgba(255, 207, 112, 0.42);
+      color: #ffd890;
+      background: rgba(255, 207, 112, 0.12);
+    }}
+    .status-pill[data-status="failed"] {{
+      border-color: rgba(255, 122, 122, 0.42);
+      color: #ffabab;
+      background: rgba(255, 122, 122, 0.12);
+    }}
+    .status-pill[data-status="uploading"], .status-pill[data-status="downloading"] {{
+      border-color: rgba(255, 122, 24, 0.48);
+      color: var(--accent);
+      background: rgba(255, 122, 24, 0.12);
     }}
     .web-progress {{
       display: grid;
@@ -1242,7 +1302,7 @@ def render_dashboard() -> bytes:
         <button type="submit">Queue URL</button>
       </form>
       <div id="web-downloads" class="web-downloads" aria-live="polite"></div>
-      <form class="url-tools" method="post" action="/clear-web-tasks">
+      <form id="clear-web-form" class="url-tools" method="post" action="/clear-web-tasks" hidden>
         <button class="mini-button" type="submit">Clear Done</button>
       </form>
     </section>
@@ -1311,6 +1371,8 @@ def render_dashboard() -> bytes:
     const logsEl = document.getElementById("logs");
     const liveEl = document.getElementById("live");
     const webDownloadsEl = document.getElementById("web-downloads");
+    const clearWebForm = document.getElementById("clear-web-form");
+    const doneWebStatuses = new Set(["completed", "failed", "cancelled"]);
     const fields = {{
       telegram: document.getElementById("telegram-value"),
       rubika: document.getElementById("rubika-value"),
@@ -1346,6 +1408,8 @@ def render_dashboard() -> bytes:
 
     function renderWebDownloads(downloads) {{
       if (!webDownloadsEl) return;
+      const hasClearable = (downloads || []).some(item => doneWebStatuses.has(item.status || ""));
+      if (clearWebForm) clearWebForm.hidden = !hasClearable;
       if (!downloads || downloads.length === 0) {{
         const empty = document.createElement("div");
         empty.className = "web-download";
@@ -1363,13 +1427,20 @@ def render_dashboard() -> bytes:
         row.className = "web-download";
         row.dataset.status = item.status || "pending";
         const body = document.createElement("div");
+        const head = document.createElement("div");
+        head.className = "web-head";
         const title = document.createElement("strong");
         title.textContent = item.file_name || item.url || item.task_id || "file";
+        const badge = document.createElement("span");
+        badge.className = "status-pill";
+        badge.dataset.status = item.status || "pending";
+        badge.textContent = (item.status || "pending").toUpperCase();
+        head.append(title, badge);
         const meta = document.createElement("span");
         const downloadPercent = Math.max(0, Math.min(100, item.download_percent || 0));
         const uploadPercent = Math.max(0, Math.min(100, item.upload_percent || 0));
         const note = item.note ? ` · ${{item.note}}` : "";
-        meta.textContent = `${{item.status || "pending"}} · ${{item.size || "unknown"}} · ${{item.task_id || "-"}}${{note}}`;
+        meta.textContent = `${{item.size || "unknown"}} · ${{item.task_id || "-"}}${{note}}`;
         const progress = document.createElement("div");
         progress.className = "web-progress";
         for (const [label, value] of [["Download", downloadPercent], ["Upload", uploadPercent]]) {{
@@ -1385,9 +1456,9 @@ def render_dashboard() -> bytes:
           line.append(name, bar, valueEl);
           progress.append(line);
         }}
-        body.append(title, meta, progress);
+        body.append(head, meta, progress);
         row.append(body);
-        if (!["completed", "failed", "cancelled"].includes(item.status || "")) {{
+        if (!doneWebStatuses.has(item.status || "")) {{
           const form = document.createElement("form");
           form.method = "post";
           form.action = "/cancel-web-task";
