@@ -1177,6 +1177,7 @@ def render_dashboard() -> bytes:
       font-size: 11px;
       font-weight: 760;
       letter-spacing: 0.13em;
+      line-height: 1.2;
       text-transform: uppercase;
     }}
     .tile strong {{
@@ -1231,7 +1232,8 @@ def render_dashboard() -> bytes:
       display: grid;
       grid-template-columns: 138px minmax(0, 1fr);
       gap: 14px;
-      align-items: start;
+      align-items: center;
+      min-height: 53px;
       padding: 12px 0;
       border-bottom: 1px solid rgba(180, 221, 209, 0.1);
     }}
@@ -1241,7 +1243,7 @@ def render_dashboard() -> bytes:
     .row strong {{
       overflow-wrap: anywhere;
       font-size: 14px;
-      line-height: 1.45;
+      line-height: 1.25;
     }}
     .progress-shell {{
       height: 12px;
@@ -1319,6 +1321,8 @@ def render_dashboard() -> bytes:
       }}
       .row {{
         grid-template-columns: 1fr;
+        align-items: start;
+        min-height: 0;
         gap: 4px;
       }}
       .footer {{
