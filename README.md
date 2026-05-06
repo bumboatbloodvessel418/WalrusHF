@@ -118,6 +118,7 @@ Notes:
 - `RUBIKA_TARGET=me` uploads to Rubika Saved Messages.
 - `WALRUS_MAX_FILE_BYTES` defaults to 8 GiB.
 - Set `WALRUS_MAX_FILE_BYTES=0` to disable the app-level file size limit.
+- Telegram bot file downloads are limited by Telegram to 2 GB per file. For larger direct files, use the Space dashboard URL form instead.
 - `file://` links are disabled by default. Enable them only if you understand the risk:
 
 ```env
