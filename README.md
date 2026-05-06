@@ -15,6 +15,9 @@ pinned: false
 
 WalrusHF runs a Telegram bot inside a Hugging Face Space and uploads received files to Rubika. Telegram is the control panel; the Space page is a live dashboard for process health, queue state, storage, and logs.
 
+<img width="3456" height="3228" alt="image" src="https://github.com/user-attachments/assets/00199bb8-1882-4ec5-b6cf-b38c8b57d14c" />
+
+
 ## Features
 
 - Accept Telegram files and direct `http://` or `https://` file links
