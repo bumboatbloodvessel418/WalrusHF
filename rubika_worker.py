@@ -13,6 +13,7 @@ from rubpy import Client as RubikaClient
 from task_store import (
     DATA_DIR,
     QUEUE_FILE,
+    append_completed,
     append_failed,
     append_telegram_event,
     build_status_text,
@@ -656,6 +657,7 @@ def process_task(task: dict) -> None:
     task["speed_text"] = None
     task["eta_text"] = None
     save_processing(task)
+    append_completed(task)
     elapsed_text = task_elapsed_text(task)
     update_telegram_status(
         task,

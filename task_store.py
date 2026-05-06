@@ -29,6 +29,7 @@ QUEUE_DIR = DATA_DIR / "queue"
 QUEUE_FILE = QUEUE_DIR / "tasks.jsonl"
 PROCESSING_FILE = QUEUE_DIR / "processing.json"
 FAILED_FILE = QUEUE_DIR / "failed.jsonl"
+COMPLETED_FILE = QUEUE_DIR / "completed.jsonl"
 CANCEL_DIR = QUEUE_DIR / "cancelled"
 WORKER_PID_FILE = QUEUE_DIR / "rub_worker.pid"
 SETTINGS_FILE = QUEUE_DIR / "settings.json"
@@ -593,12 +594,32 @@ def append_failed(task: dict, error: str) -> None:
         file.write(json.dumps(payload, ensure_ascii=False) + "\n")
 
 
+def append_completed(task: dict) -> None:
+    payload = {"task": task, "completed_at": time.time()}
+    with open(COMPLETED_FILE, "a", encoding="utf-8") as file:
+        file.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
 def read_failed_entries() -> list[dict]:
     if not FAILED_FILE.exists():
         return []
 
     entries = []
     with open(FAILED_FILE, "r", encoding="utf-8") as file:
+        for line in file:
+            line = line.strip()
+            if not line:
+                continue
+            entries.append(json.loads(line))
+    return entries
+
+
+def read_completed_entries() -> list[dict]:
+    if not COMPLETED_FILE.exists():
+        return []
+
+    entries = []
+    with open(COMPLETED_FILE, "r", encoding="utf-8") as file:
         for line in file:
             line = line.strip()
             if not line:

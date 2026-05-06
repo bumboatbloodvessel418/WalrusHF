@@ -37,6 +37,7 @@ from task_store import (
     normalize_upload_filename,
     processing_task_is_active,
     queue_size,
+    read_completed_entries,
     read_failed_entries,
     read_queue_tasks,
     remove_queued_task,
@@ -240,6 +241,16 @@ def failed_task_by_id() -> dict[str, dict]:
     return failed
 
 
+def completed_task_by_id() -> dict[str, dict]:
+    completed = {}
+    for entry in read_completed_entries():
+        task = entry.get("task") or {}
+        task_id = task.get("task_id")
+        if task_id:
+            completed[task_id] = entry
+    return completed
+
+
 def enrich_web_download(item: dict) -> dict:
     task_id = item.get("task_id", "")
     if not task_id:
@@ -257,10 +268,27 @@ def enrich_web_download(item: dict) -> dict:
 
     queued = {task.get("task_id"): task for task in read_queue_tasks()}
     processing = load_processing()
+    completed = completed_task_by_id()
     failed = failed_task_by_id()
     now = time.time()
 
     if item.get("status") == "downloading":
+        return item
+
+    if task_id in completed:
+        entry = completed[task_id]
+        task = entry.get("task") or {}
+        item.update(
+            {
+                "status": "completed",
+                "download_percent": 100,
+                "upload_percent": 100,
+                "note": "Uploaded to Rubika.",
+                "file_name": task.get("file_name") or item.get("file_name"),
+                "size": human_size(int(task.get("file_size", 0) or 0)),
+                "finished_at": item.get("finished_at") or entry.get("completed_at") or now,
+            }
+        )
         return item
 
     processing_active = (
@@ -596,6 +624,7 @@ def dashboard_snapshot() -> dict:
     ensure_supervisor()
     settings = load_runtime_settings()
     processing = load_processing()
+    completed = completed_task_by_id()
     failed_count = len(read_failed_entries()) if FAILED_FILE.exists() else 0
     queue_count = queue_size() if QUEUE_FILE.exists() else 0
     web_downloads = web_download_snapshot()
@@ -607,6 +636,7 @@ def dashboard_snapshot() -> dict:
         and (
             not processing_task_is_active(processing)
             or is_cancelled(processing.get("task_id", ""))
+            or processing.get("task_id", "") in completed
         )
     )
     if processing and not stale_processing:
@@ -1005,6 +1035,12 @@ def render_dashboard() -> bytes:
       border-radius: 8px;
       background: rgba(0, 0, 0, 0.18);
     }}
+    .web-download > form {{
+      display: flex;
+      align-items: center;
+      min-height: 32px;
+      margin: 0;
+    }}
     .web-download[data-status="failed"] {{
       border-color: rgba(255, 122, 122, 0.34);
     }}
@@ -1023,7 +1059,7 @@ def render_dashboard() -> bytes:
     .web-head {{
       display: flex;
       gap: 10px;
-      align-items: flex-start;
+      align-items: center;
       justify-content: space-between;
       min-width: 0;
     }}
@@ -1041,9 +1077,12 @@ def render_dashboard() -> bytes:
     }}
     .web-download .status-pill {{
       flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      min-height: 32px;
       border: 1px solid rgba(255, 255, 255, 0.16);
       border-radius: 999px;
-      padding: 3px 8px;
+      padding: 0 10px;
       color: var(--text);
       background: rgba(255, 255, 255, 0.06);
       font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -1051,6 +1090,13 @@ def render_dashboard() -> bytes:
       font-weight: 820;
       letter-spacing: 0;
       line-height: 1.2;
+    }}
+    .web-download button {{
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 32px;
+      padding: 0 12px;
     }}
     .status-pill[data-status="completed"] {{
       border-color: rgba(88, 214, 141, 0.42);
