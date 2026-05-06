@@ -38,8 +38,12 @@ from task_store import (
     processing_task_is_active,
     queue_size,
     read_failed_entries,
+    read_queue_tasks,
+    remove_queued_task,
     runtime_path,
     safe_filename,
+    mark_cancelled,
+    cleanup_local_file,
 )
 
 
@@ -213,21 +217,136 @@ def storage_size(path: Path) -> int:
 
 
 def clean_old_web_downloads() -> None:
-    cutoff = time.time() - 60 * 60
+    cutoff = time.time() - 10 * 60
     with WEB_DOWNLOAD_LOCK:
         old_task_ids = [
             task_id
             for task_id, item in WEB_DOWNLOADS.items()
-            if item.get("finished_at") and float(item["finished_at"]) < cutoff
+            if item.get("finished_at")
+            and float(item["finished_at"]) < cutoff
+            and item.get("status") in {"completed", "failed", "cancelled"}
         ]
         for task_id in old_task_ids:
             WEB_DOWNLOADS.pop(task_id, None)
 
 
+def failed_task_by_id() -> dict[str, dict]:
+    failed = {}
+    for entry in read_failed_entries():
+        task = entry.get("task") or {}
+        task_id = task.get("task_id")
+        if task_id:
+            failed[task_id] = entry
+    return failed
+
+
+def enrich_web_download(item: dict) -> dict:
+    task_id = item.get("task_id", "")
+    if not task_id:
+        return item
+
+    queued = {task.get("task_id"): task for task in read_queue_tasks()}
+    processing = load_processing()
+    failed = failed_task_by_id()
+    now = time.time()
+
+    if item.get("status") == "downloading":
+        return item
+
+    processing_active = (
+        processing
+        and processing.get("task_id") == task_id
+        and processing_task_is_active(processing)
+        and not is_cancelled(task_id)
+    )
+    if processing_active:
+        item.update(
+            {
+                "status": "uploading",
+                "upload_percent": int(processing.get("upload_percent", 0) or 0),
+                "note": processing.get("attempt_text") or "Uploading to Rubika.",
+                "file_name": processing.get("file_name") or item.get("file_name"),
+                "size": human_size(int(processing.get("file_size", 0) or 0)),
+                "finished_at": None,
+            }
+        )
+        return item
+
+    if task_id in queued:
+        task = queued[task_id]
+        item.update(
+            {
+                "status": "queued",
+                "upload_percent": 0,
+                "note": "Waiting for Rubika worker.",
+                "file_name": task.get("file_name") or item.get("file_name"),
+                "size": human_size(int(task.get("file_size", 0) or 0)),
+                "finished_at": None,
+            }
+        )
+        return item
+
+    if task_id in failed:
+        entry = failed[task_id]
+        task = entry.get("task") or {}
+        item.update(
+            {
+                "status": "failed",
+                "upload_percent": int(task.get("upload_percent", 0) or 0),
+                "note": entry.get("error") or "Upload failed.",
+                "file_name": task.get("file_name") or item.get("file_name"),
+                "size": human_size(int(task.get("file_size", 0) or 0)),
+                "finished_at": item.get("finished_at") or now,
+            }
+        )
+        return item
+
+    if item.get("status") in {"queued", "uploading"}:
+        item.update(
+            {
+                "status": "completed",
+                "upload_percent": 100,
+                "note": "Uploaded to Rubika.",
+                "finished_at": item.get("finished_at") or now,
+            }
+        )
+
+    return item
+
+
 def web_download_snapshot() -> list[dict]:
     clean_old_web_downloads()
     with WEB_DOWNLOAD_LOCK:
-        return [dict(item) for item in WEB_DOWNLOADS.values()]
+        items = [dict(item) for item in WEB_DOWNLOADS.values()]
+
+    enriched = [enrich_web_download(item) for item in items]
+    with WEB_DOWNLOAD_LOCK:
+        for item in enriched:
+            task_id = item.get("task_id")
+            if task_id in WEB_DOWNLOADS:
+                WEB_DOWNLOADS[task_id].update(item)
+
+    status_order = {
+        "downloading": 0,
+        "queued": 1,
+        "uploading": 2,
+        "failed": 3,
+        "cancelled": 4,
+        "completed": 5,
+    }
+    return sorted(
+        enriched,
+        key=lambda item: (
+            status_order.get(str(item.get("status")), 9),
+            -float(item.get("started_at") or 0),
+        ),
+    )
+
+
+def web_task_cancel_requested(task_id: str) -> bool:
+    with WEB_DOWNLOAD_LOCK:
+        item = WEB_DOWNLOADS.get(task_id) or {}
+        return bool(item.get("cancel_requested"))
 
 
 def update_web_download(task_id: str, **updates) -> None:
@@ -238,10 +357,12 @@ def update_web_download(task_id: str, **updates) -> None:
                 "task_id": task_id,
                 "status": "starting",
                 "file_name": "file",
-                "percent": 0,
+                "download_percent": 0,
+                "upload_percent": 0,
                 "size": "unknown",
                 "url": "",
                 "note": "",
+                "cancel_requested": False,
             },
         )
         current.update(updates)
@@ -318,6 +439,9 @@ def download_url_for_upload(task_id: str, url: str) -> None:
 
     download_path: Path | None = None
     try:
+        if web_task_cancel_requested(task_id):
+            raise RuntimeError("Cancelled.")
+
         with requests.get(url, stream=True, timeout=DIRECT_URL_TIMEOUT) as response:
             response.raise_for_status()
             total_size = int(response.headers.get("content-length") or 0)
@@ -331,11 +455,14 @@ def download_url_for_upload(task_id: str, url: str) -> None:
                 file_name=filename,
                 size=human_size(total_size) if total_size else "unknown",
                 path=str(download_path),
-                percent=0,
+                download_percent=0,
+                upload_percent=0,
             )
 
             with download_path.open("wb") as file:
                 for chunk in response.iter_content(chunk_size=DIRECT_URL_CHUNK_SIZE):
+                    if web_task_cancel_requested(task_id):
+                        raise RuntimeError("Cancelled.")
                     if not chunk:
                         continue
                     file.write(chunk)
@@ -347,7 +474,7 @@ def download_url_for_upload(task_id: str, url: str) -> None:
                     percent = int((downloaded * 100) / total_size) if total_size else 0
                     update_web_download(
                         task_id,
-                        percent=max(0, min(100, percent)),
+                        download_percent=max(0, min(100, percent)),
                         size=human_size(total_size or downloaded),
                     )
 
@@ -369,10 +496,11 @@ def download_url_for_upload(task_id: str, url: str) -> None:
         update_web_download(
             task_id,
             status="queued",
-            percent=100,
+            download_percent=100,
+            upload_percent=0,
             size=human_size(file_size),
             note="Queued for Rubika upload.",
-            finished_at=time.time(),
+            finished_at=None,
         )
         append_log("web-url", f"queued upload id={task_id} file={download_path.name}")
     except Exception as error:
@@ -383,7 +511,7 @@ def download_url_for_upload(task_id: str, url: str) -> None:
                 pass
         update_web_download(
             task_id,
-            status="failed",
+            status="cancelled" if "cancelled" in str(error).lower() else "failed",
             note=str(error),
             finished_at=time.time(),
         )
@@ -392,7 +520,7 @@ def download_url_for_upload(task_id: str, url: str) -> None:
 
 def start_web_url_download(url: str) -> str:
     task_id = uuid.uuid4().hex[:10]
-    update_web_download(task_id, status="starting", url=url)
+    update_web_download(task_id, status="starting", url=url, started_at=time.time())
     thread = threading.Thread(
         target=download_url_for_upload,
         args=(task_id, url),
@@ -400,6 +528,59 @@ def start_web_url_download(url: str) -> str:
     )
     thread.start()
     return task_id
+
+
+def cancel_web_task(task_id: str) -> bool:
+    did_cancel = False
+    with WEB_DOWNLOAD_LOCK:
+        item = WEB_DOWNLOADS.get(task_id)
+        if item:
+            item["cancel_requested"] = True
+            item["note"] = "Cancel requested."
+            did_cancel = True
+            if item.get("status") in {"starting", "downloading"}:
+                item["status"] = "cancelled"
+                item["finished_at"] = time.time()
+
+    queued_task = remove_queued_task(task_id)
+    if queued_task:
+        cleanup_local_file(queued_task.get("path", ""))
+        update_web_download(
+            task_id,
+            status="cancelled",
+            note="Removed from upload queue.",
+            finished_at=time.time(),
+        )
+        did_cancel = True
+
+    processing = load_processing()
+    if processing and processing.get("task_id") == task_id:
+        mark_cancelled(task_id)
+        update_web_download(
+            task_id,
+            status="cancelled",
+            note="Stopping active upload.",
+            finished_at=None,
+        )
+        did_cancel = True
+
+    if did_cancel:
+        append_log("web-url", f"cancel requested id={task_id}")
+    return did_cancel
+
+
+def clear_web_tasks() -> int:
+    with WEB_DOWNLOAD_LOCK:
+        removable = [
+            task_id
+            for task_id, item in WEB_DOWNLOADS.items()
+            if item.get("status") in {"completed", "failed", "cancelled"}
+        ]
+        for task_id in removable:
+            WEB_DOWNLOADS.pop(task_id, None)
+    if removable:
+        append_log("web-url", f"cleared {len(removable)} web transfer item(s)")
+    return len(removable)
 
 
 def dashboard_snapshot() -> dict:
@@ -781,15 +962,43 @@ def render_dashboard() -> bytes:
       gap: 8px;
       margin-top: 12px;
     }}
+    .url-tools {{
+      position: relative;
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 10px;
+    }}
+    .mini-button, .web-download button {{
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 8px;
+      padding: 7px 10px;
+      color: var(--text);
+      background: rgba(0, 0, 0, 0.24);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 720;
+      cursor: pointer;
+    }}
+    .mini-button:hover, .web-download button:hover {{
+      border-color: rgba(255, 122, 24, 0.7);
+      color: var(--accent);
+    }}
     .web-download {{
       display: grid;
       grid-template-columns: minmax(0, 1fr) auto;
-      gap: 10px;
-      align-items: center;
-      padding: 10px 12px;
+      gap: 12px;
+      align-items: start;
+      padding: 12px;
       border: 1px solid rgba(255, 255, 255, 0.1);
       border-radius: 8px;
       background: rgba(0, 0, 0, 0.18);
+    }}
+    .web-download[data-status="failed"] {{
+      border-color: rgba(255, 122, 122, 0.34);
+    }}
+    .web-download[data-status="completed"] {{
+      border-color: rgba(255, 122, 24, 0.28);
+      opacity: 0.74;
     }}
     .web-download strong {{
       display: block;
@@ -802,6 +1011,34 @@ def render_dashboard() -> bytes:
       font-family: "SF Mono", "Cascadia Code", ui-monospace, Menlo, Consolas, monospace;
       font-size: 11px;
       text-transform: uppercase;
+    }}
+    .web-progress {{
+      display: grid;
+      gap: 5px;
+      margin-top: 9px;
+    }}
+    .web-progress label {{
+      display: grid;
+      grid-template-columns: 74px 1fr 38px;
+      gap: 8px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+    }}
+    .web-progress i {{
+      height: 7px;
+      border: 1px solid rgba(255, 122, 24, 0.2);
+      border-radius: 999px;
+      overflow: hidden;
+      background: rgba(0, 0, 0, 0.28);
+    }}
+    .web-progress b {{
+      display: block;
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), var(--accent-2));
+      transition: width 300ms ease;
     }}
     .tile, section {{
       border: 1px solid var(--line);
@@ -1005,6 +1242,9 @@ def render_dashboard() -> bytes:
         <button type="submit">Queue URL</button>
       </form>
       <div id="web-downloads" class="web-downloads" aria-live="polite"></div>
+      <form class="url-tools" method="post" action="/clear-web-tasks">
+        <button class="mini-button" type="submit">Clear Done</button>
+      </form>
     </section>
 
     <div class="status-grid" aria-label="Service status">
@@ -1107,19 +1347,60 @@ def render_dashboard() -> bytes:
     function renderWebDownloads(downloads) {{
       if (!webDownloadsEl) return;
       if (!downloads || downloads.length === 0) {{
-        webDownloadsEl.innerHTML = "";
+        const empty = document.createElement("div");
+        empty.className = "web-download";
+        empty.dataset.status = "empty";
+        const title = document.createElement("strong");
+        title.textContent = "No dashboard URL transfers.";
+        const meta = document.createElement("span");
+        meta.textContent = "Paste a direct file URL above.";
+        empty.append(title, meta);
+        webDownloadsEl.replaceChildren(empty);
         return;
       }}
       webDownloadsEl.replaceChildren(...downloads.slice(0, 5).map(item => {{
         const row = document.createElement("div");
         row.className = "web-download";
+        row.dataset.status = item.status || "pending";
+        const body = document.createElement("div");
         const title = document.createElement("strong");
         title.textContent = item.file_name || item.url || item.task_id || "file";
         const meta = document.createElement("span");
-        const percent = item.percent ? ` · ${{item.percent}}%` : "";
+        const downloadPercent = Math.max(0, Math.min(100, item.download_percent || 0));
+        const uploadPercent = Math.max(0, Math.min(100, item.upload_percent || 0));
         const note = item.note ? ` · ${{item.note}}` : "";
-        meta.textContent = `${{item.status || "pending"}} · ${{item.size || "unknown"}}${{percent}}${{note}}`;
-        row.append(title, meta);
+        meta.textContent = `${{item.status || "pending"}} · ${{item.size || "unknown"}} · ${{item.task_id || "-"}}${{note}}`;
+        const progress = document.createElement("div");
+        progress.className = "web-progress";
+        for (const [label, value] of [["Download", downloadPercent], ["Upload", uploadPercent]]) {{
+          const line = document.createElement("label");
+          const name = document.createElement("span");
+          const bar = document.createElement("i");
+          const fill = document.createElement("b");
+          const valueEl = document.createElement("span");
+          name.textContent = label;
+          fill.style.width = `${{value}}%`;
+          valueEl.textContent = `${{value}}%`;
+          bar.append(fill);
+          line.append(name, bar, valueEl);
+          progress.append(line);
+        }}
+        body.append(title, meta, progress);
+        row.append(body);
+        if (!["completed", "failed", "cancelled"].includes(item.status || "")) {{
+          const form = document.createElement("form");
+          form.method = "post";
+          form.action = "/cancel-web-task";
+          const input = document.createElement("input");
+          input.type = "hidden";
+          input.name = "task_id";
+          input.value = item.task_id || "";
+          const button = document.createElement("button");
+          button.type = "submit";
+          button.textContent = "Cancel";
+          form.append(input, button);
+          row.append(form);
+        }}
         return row;
       }}));
     }}
@@ -1198,28 +1479,41 @@ class DashboardHandler(BaseHTTPRequestHandler):
 
     def do_POST(self) -> None:
         path = urlsplit(self.path).path
-        if path != "/submit-url":
-            self.send_response(404)
-            self.end_headers()
-            return
 
         try:
             length = int(self.headers.get("Content-Length", "0"))
         except ValueError:
             length = 0
 
-        if length <= 0 or length > 8192:
+        if length < 0 or length > 8192:
             self.redirect_home()
             return
 
-        body = self.rfile.read(length).decode("utf-8", errors="replace")
+        body = self.rfile.read(length).decode("utf-8", errors="replace") if length else ""
         values = parse_qs(body)
-        url = (values.get("url") or [""])[0].strip()
-        if url:
-            task_id = start_web_url_download(url)
-            append_log("web", f"accepted direct URL task id={task_id}")
 
-        self.redirect_home()
+        if path == "/submit-url":
+            url = (values.get("url") or [""])[0].strip()
+            if url:
+                task_id = start_web_url_download(url)
+                append_log("web", f"accepted direct URL task id={task_id}")
+            self.redirect_home()
+            return
+
+        if path == "/cancel-web-task":
+            task_id = (values.get("task_id") or [""])[0].strip()
+            if task_id:
+                cancel_web_task(task_id)
+            self.redirect_home()
+            return
+
+        if path == "/clear-web-tasks":
+            clear_web_tasks()
+            self.redirect_home()
+            return
+
+        self.send_response(404)
+        self.end_headers()
 
     def do_HEAD(self) -> None:
         self.send_response(200)

@@ -166,7 +166,7 @@ Useful dashboard checks:
 - `Queue` shows waiting upload jobs.
 - `Active upload` shows the current Rubika worker task.
 
-You can also paste a direct `http://` or `https://` file URL into the dashboard. WalrusHF downloads it inside the Space, queues it for Rubika, and tracks the download/upload on the web page. This path is separate from Telegram and does not send Telegram status messages.
+You can also paste a direct `http://` or `https://` file URL into the dashboard. WalrusHF downloads it inside the Space, queues it for Rubika, and tracks download/upload progress on the web page. Dashboard URL transfers can be cancelled from the web page, and completed/failed/cancelled items can be cleared with **Clear Done**. This path is separate from Telegram and does not send Telegram status messages.
 
 ## Troubleshooting
 
