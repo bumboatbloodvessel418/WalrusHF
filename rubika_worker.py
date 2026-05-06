@@ -250,6 +250,7 @@ async def send_document(
     client = RubikaClient(name=session_name)
     entered = False
     task = task or {}
+    task_id = task.get("task_id", "")
     upload_name = file_name or Path(file_path).name
     try:
         await asyncio.wait_for(client.__aenter__(), timeout=RUBIKA_CONNECT_TIMEOUT)
@@ -265,6 +266,8 @@ async def send_document(
             callback=callback,
             file_name=upload_name,
         )
+        if is_cancelled(task_id):
+            raise CancelledTaskError("Cancelled by user.")
 
         file_inline = dict(uploaded) if isinstance(uploaded, dict) else uploaded.to_dict
         inline_type = rubika_inline_type(task, file_path, upload_name)
@@ -273,6 +276,8 @@ async def send_document(
         last_error = None
         for strategy, candidate_file_inline in finalize_variants:
             for attempt in range(1, RUBIKA_FINALIZE_RETRIES + 1):
+                if is_cancelled(task_id):
+                    raise CancelledTaskError("Cancelled by user.")
                 try:
                     result = await client.send_message(
                         object_guid=target,
@@ -281,6 +286,8 @@ async def send_document(
                     )
                     return result
                 except Exception as error:
+                    if isinstance(error, CancelledTaskError):
+                        raise
                     last_error = error
                     error_text = compact_error_text(error)
                     transient = is_transient_upload_error(error_text.lower())
@@ -295,7 +302,10 @@ async def send_document(
                         break
                     if not transient:
                         break
-                    await asyncio.sleep(RUBIKA_FINALIZE_RETRY_DELAY * attempt)
+                    await async_sleep_with_cancel(
+                        task_id,
+                        RUBIKA_FINALIZE_RETRY_DELAY * attempt,
+                    )
 
                 if last_error and not transient:
                     break
@@ -350,6 +360,17 @@ def wait_with_cancel(task_id: str, seconds: int) -> None:
         if is_cancelled(task_id):
             raise CancelledTaskError("Cancelled by user.")
         time.sleep(1)
+
+
+async def async_sleep_with_cancel(task_id: str, seconds: float) -> None:
+    deadline = time.monotonic() + max(0.0, seconds)
+    while True:
+        if is_cancelled(task_id):
+            raise CancelledTaskError("Cancelled by user.")
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return
+        await asyncio.sleep(min(0.5, remaining))
 
 
 def normalize_failed_progress(task: dict) -> None:

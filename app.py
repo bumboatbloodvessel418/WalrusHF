@@ -209,6 +209,25 @@ def proc_label(proc: subprocess.Popen | None) -> str:
     return f"stopped (exit {code})"
 
 
+def interrupt_rubika_worker_for_cancel(task_id: str) -> None:
+    global rubika_proc
+    proc = rubika_proc
+    if proc is None or proc.poll() is not None:
+        return
+
+    append_log("supervisor", f"stopping rubika worker to cancel active upload id={task_id}")
+    proc.terminate()
+    try:
+        proc.wait(timeout=3)
+    except subprocess.TimeoutExpired:
+        append_log("supervisor", f"killing rubika worker after cancel timeout id={task_id}")
+        proc.kill()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            append_log("supervisor", f"rubika worker did not stop after kill id={task_id}")
+
+
 def storage_size(path: Path) -> int:
     if not path.exists():
         return 0
@@ -569,13 +588,15 @@ def start_web_url_download(url: str) -> str:
 
 def cancel_web_task(task_id: str) -> bool:
     did_cancel = False
+    item_status = ""
     with WEB_DOWNLOAD_LOCK:
         item = WEB_DOWNLOADS.get(task_id)
         if item:
+            item_status = str(item.get("status") or "")
             item["cancel_requested"] = True
             item["note"] = "Cancel requested."
             did_cancel = True
-            if item.get("status") in {"starting", "downloading"}:
+            if item_status in {"starting", "downloading"}:
                 item["status"] = "cancelled"
                 item["finished_at"] = time.time()
 
@@ -593,11 +614,21 @@ def cancel_web_task(task_id: str) -> bool:
     processing = load_processing()
     if processing and processing.get("task_id") == task_id:
         mark_cancelled(task_id)
+        interrupt_rubika_worker_for_cancel(task_id)
         update_web_download(
             task_id,
             status="cancelled",
-            note="Stopping active upload.",
-            finished_at=None,
+            note="Active upload stopped.",
+            finished_at=time.time(),
+        )
+        did_cancel = True
+    elif not queued_task and item_status in {"queued", "uploading"}:
+        mark_cancelled(task_id)
+        update_web_download(
+            task_id,
+            status="cancelled",
+            note="Cancel requested before upload started.",
+            finished_at=time.time(),
         )
         did_cancel = True
 
