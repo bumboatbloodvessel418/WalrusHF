@@ -1,8 +1,8 @@
 ---
 title: WalrusHF
 emoji: ⛵
-colorFrom: gray
-colorTo: red
+colorFrom: red
+colorTo: yellow
 sdk: gradio
 python_version: '3.11'
 app_file: app.py
