@@ -392,7 +392,7 @@ def download_url_for_upload(task_id: str, url: str) -> None:
 
 def start_web_url_download(url: str) -> str:
     task_id = uuid.uuid4().hex[:10]
-    update_web_download(task_id, status="starting", url=url, task_id=task_id)
+    update_web_download(task_id, status="starting", url=url)
     thread = threading.Thread(
         target=download_url_for_upload,
         args=(task_id, url),
